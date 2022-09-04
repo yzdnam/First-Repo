@@ -2,6 +2,7 @@
 ;; about the language level of this file in a form that our tools can easily process.
 #reader(lib "htdp-intermediate-lambda-reader.ss" "lang")((modname |16.7|) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
 (require 2htdp/image)
+(require 2htdp/abstraction)
 
 ; EX 267
 ; [List-of Number] -> [List-of Number]
@@ -12,9 +13,15 @@
             (* dollar EXCHANGE-RATE)))
     (map convert-single-amt loa)))
 
+; EX 305
+; convert euro with for loop
+(define (convert-euro-loop loa)
+  (for/list ([amt loa])
+    (* amt EXCHANGE-RATE)))
+
 (define EXCHANGE-RATE 1.06)
 
-(check-expect (convert-euro (list 1.10 1.00 0.97)) (list (* 1.10 1.06) (* 1.00 1.06) (* 0.97 1.06)))
+(check-expect (convert-euro-loop (list 1.10 1.00 0.97)) (list (* 1.10 1.06) (* 1.00 1.06) (* 0.97 1.06)))
 
 ; converts a list of fahrenheit measurements to a list celsius measurements
 (define (convertFC lot)
@@ -93,9 +100,15 @@
          (define (return-self n) n))
    (build-list n return-self)))
 
+(define (up-to-loop n)
+  (for/list ([i n]) i))
+
 ; create list (list 1 ... n) for any natural number n
 (define (one-to n)
   (build-list n add1))
+
+(define (one-to-loop n)
+  (for/list ([i n]) (+ i 1)))
 
 ; create list (list 1 1/2 ... 1/n) for any natural number n
 (define (one-over-list n)
@@ -103,12 +116,18 @@
           (define (f x) (/ 1 (add1 x))))
     (build-list n f)))
 
+(define (one-over-list-loop n)
+  (for/list ([i n]) (/ 1 (+ i 1))))
+
 ; create the list of the first n even numbers
 (define (first-n-evens n)
   (local (
           (define (times2 x)
             (+ (* 2 x) 2)))
     (build-list n times2)))
+
+(define (first-n-evens-loop n)
+  (for/list ([i n]) (+ 2 (* i 2))))
 
 ; tabulates a function between n and 0 (incl.) in a list
 (define (tabulate func n)
