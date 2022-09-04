@@ -104,3 +104,40 @@
 
 (check-expect (blue-eyed-ancestor? Eva) #false)
 (check-expect (blue-eyed-ancestor? Gustav) #true)
+
+; An FF is a [List-of FTs]
+
+(define ff1 (list Carl Bettina))
+(define ff2 (list Fred Eva))
+(define ff3 (list Fred Eva Carl))
+
+; FF -> Boolean
+; does the forest contain any child with "blue" eyes
+ 
+(check-expect (blue-eyed-person-in-forest? ff1) #false)
+(check-expect (blue-eyed-person-in-forest? ff2) #true)
+(check-expect (blue-eyed-person-in-forest? ff3) #true)
+ 
+(define (blue-eyed-person-in-forest? a-forest)
+  (ormap blue-eyed-person? a-forest))
+
+; FF -> Number
+; returns number of persons in a FF
+(define (count-persons-forest an-forest)
+  (cond
+    [(empty? an-forest) 0]
+    [else (+ (count-persons (first an-forest))
+             (count-persons-forest (rest an-forest)))]))
+
+; FF Number -> Number
+; returns the average age of the person-instances in the FF
+(define (average-age-forest an-forest current-year)
+  (cond
+    [(empty? an-forest) 0]
+    [else (/ (+ (* (average-age-forest (rest an-forest) current-year) (count-persons-forest (rest an-forest)))
+             (* (average-age (first an-forest) current-year) (count-persons (first an-forest))))
+          (count-persons-forest an-forest))]))
+
+(check-expect (average-age-forest ff1 2022) 96)
+(check-expect (average-age-forest ff2 2022) 76.25)
+(check-expect (average-age-forest ff3 2022) 80.2)
