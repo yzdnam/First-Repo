@@ -109,3 +109,20 @@
               (make-node 63 'e (make-node 29 'd (make-node 15 'b (make-node 10 'a NONE (make-node 12 'x NONE NONE)) (make-node 24 'c NONE NONE)) NONE)
                                (make-node 89 'g (make-node 77 'f NONE NONE) (make-node 95 'h NONE (make-node 99 'i NONE NONE)))))
 
+; EX 327
+; [List-of [List Number Symbol]] -> BST
+; produces a BST from a list of Number-Name pairs
+(define (create-bst-from-list lops)
+  (cond
+    [(empty? lops) NONE]
+    [else (create-bst (create-bst-from-list (rest lops)) (first (first lops)) (second (first lops)))]))
+
+(check-expect (create-bst-from-list '((99 i)
+  (77 f)
+  (24 c)
+  (10 a)
+  (95 h)
+  (15 b)
+  (89 g)
+  (29 d)
+  (63 e))) EXAMPLE-BST)
