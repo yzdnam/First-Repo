@@ -3,8 +3,8 @@
 #reader(lib "htdp-intermediate-lambda-reader.ss" "lang")((modname |20.3|) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
 (require htdp/dir)
 
-;(define Hlp (create-dir "/home/acerlaptop/documents/2_school"))
-(define Hdt (create-dir "/home/admin/documents/2_school/cs/htc/first-repo"))
+(define Hlp (create-dir "/home/acerlaptop/documents/2_school"))
+;(define Hdt (create-dir "/home/admin/documents/2_school/cs/htc/first-repo"))
 
 ; A File is a structure: 
 ;   (make-file String N String)
@@ -29,6 +29,16 @@
   (+ (foldl + 0 (map (lambda (x) (how-many x)) (dir-dirs direct)))
      (length (dir-files direct))))
 
+(define EXAMPLE-TREE (make-dir "TS"
+                                       (list (make-dir "Text" '() (list (make-file "part1" 99 "")
+                                                                        (make-file "part2" 52 "")
+                                                                        (make-file "part3" 17 "")))
+                                             (make-dir "Libs" (list (make-dir "Docs" '() (list (make-file "read!" 19 "")))
+                                                                    (make-dir "Code" '() (list (make-file "hang" 8 "")
+                                                                                               (make-file "draw" 2 ""))))
+                                                          '()))
+                                       (list (make-file "read!" 10 ""))))
+
 ; EX 339
 ; Dir string -> Boolean
 ; determines whether the given string is the name of a file in the given directory tree or not
@@ -49,14 +59,14 @@
               #true
               (find-in-file* (rest lof) fname))]))
 
-(check-expect (find? Hdt "20.2.rkt") #true)
-(check-expect (find? Hdt "fart") #false)
+(check-expect (find? EXAMPLE-TREE "read!") #true)
+(check-expect (find? EXAMPLE-TREE "fart") #false)
 
 ; EX 340
 ; Dir -> [List-of String]
 ; lists the names of all files and directories in a given Dir
 (define (ls direct)
-  (append (ls-dirs (dir-dirs direct)) (ls-files (dir-files direct))))
+  (append (foldl cons '() (map dir-name (dir-dirs direct))) (foldl cons '() (map file-name (dir-files direct)))))
 
 (define (ls-dirs lod)
   (cond
@@ -65,3 +75,26 @@
 
 (define (ls-files lof)
   (foldl cons '() (map file-name lof)))
+
+; EX 341
+; Dir -> Number
+; computes the size of a directory tree assuming a directory has a size of 1
+(define (du direct)
+  (+ 1 (dir*-size (dir-dirs direct)) (file*-size (dir-files direct))))
+
+(define (dir*-size lod)
+  (cond
+    [(empty? lod) 0]
+    [else (+ (du (first lod)) (dir*-size (rest lod)))]))
+
+(define (file*-size lof)
+  (cond
+    [(empty? lof) 0]
+    [else (+ (file-size (first lof)) (file*-size (rest lof)))]))
+
+(check-expect (du EXAMPLE-TREE) 212)
+
+; A Path is [List-of String].
+; interpretation directions into a directory tree
+
+; EX 342
