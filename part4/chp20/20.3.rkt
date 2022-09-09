@@ -3,8 +3,8 @@
 #reader(lib "htdp-intermediate-lambda-reader.ss" "lang")((modname |20.3|) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
 (require htdp/dir)
 
-;(define Hlp (create-dir "/home/acerlaptop/documents/2_school"))
-(define Hdt (create-dir "/home/admin/documents/2_school/cs/lab"))
+(define Hlp (create-dir "/home/acerlaptop/documents/2_school/cs/lab"))
+;(define Hdt (create-dir "/home/admin/documents/2_school/cs/lab"))
 
 ; A File is a structure: 
 ;   (make-file String N String)
@@ -150,17 +150,68 @@
 ; Dir -> [List-of [List-of String]]
 ; lists the paths to all files contained in a given Dir
 (define (ls-r direct)
-  (cons (show-all-paths (dir-dirs direct))
-        (start-paths direct (dir-files direct))))
+  (append (map (lambda (x) (cons (dir-name direct) x)) (show-all-paths (dir-dirs direct)))
+          (map (lambda (x) (cons (dir-name direct) x)) (start-paths direct (dir-files direct)))))
 
 (define (show-all-paths lod)
   (cond
     [(empty? lod) '()]
-    [else (append (cons (dir-name (first lod)) (ls-r (first lod))) (show-all-paths (rest lod)))]))
+    [else (append (ls-r (first lod)) (show-all-paths (rest lod)))]))
 
 (define (start-paths direct lof)
   (cond
     [(empty? lof) '()]
-    [else (cons (file-name (first lof)) (start-paths direct (rest lof)))]))
+    [else (cons (list (file-name (first lof))) (start-paths direct (rest lof)))]))
   
-(ls-r Hdt)
+(ls-r Hlp)
+
+; EX 344
+; Dir string -> [List-of [List-of String]]
+; produces the list of all paths that lead to f in d using ls-r
+(define (find-all-alt direct fname)
+  (look-thru-paths (ls-r direct) fname))
+
+(define (look-thru-paths lop fname)
+  (filter (lambda (x) (in-path? fname x)) lop))
+
+(define (in-path? fname path)
+  (member? fname path)) 
+          
+(check-expect (find-all-alt EXAMPLE-TREE "read!") (list (list "TS" "Libs" "Docs" "read!") (list "TS" "read!")))
+(check-satisfied (find-all-alt EXAMPLE-TREE "read!") (found-all? EXAMPLE-TREE "read!"))
+
+; Specification for find-all
+(define (found-all? dir fname)
+  (lambda (found-lop)
+    (andmap (lambda (x) (not-in (lop-wo-all-found-paths (ls-r dir) found-lop) x)) found-lop)))
+
+; removes the paths found using find-all from the original list of paths
+(define (lop-wo-all-found-paths lop found-lop)
+  (local (
+          (define (lop-wo-a-found-path lop first-found-lop)
+            (cond
+              [(empty? lop) '()]
+              [(not (equal? (first lop) first-found-lop))
+               (cons (first lop) (lop-wo-a-found-path (rest lop) first-found-lop))]
+              [else (lop-wo-a-found-path (rest lop) first-found-lop)]))
+
+          ;combine two lists removing duplicates and items that are not shared by the two lists
+          (define (combine-lists l1 l2)
+            (filter (lambda (x) (and (member? x l1) (member? x l2))) l1)))
+    
+    (foldl combine-lists lop (map (lambda (x) (lop-wo-a-found-path lop x)) found-lop))))
+
+(check-expect (lop-wo-all-found-paths (ls-r EXAMPLE-TREE) (find-all EXAMPLE-TREE "read!"))
+              (list (list "TS" "Text" "part1")
+                    (list "TS" "Text" "part2")
+                    (list "TS" "Text" "part3")
+                    (list "TS" "Libs" "Code" "hang")
+                    (list "TS" "Libs" "Code" "draw")))
+
+; true if the given path is not in the given list of paths
+(define (not-in lop path)
+  (andmap (lambda (x) (not (equal? path x))) lop))
+
+(check-expect (not-in (ls-r EXAMPLE-TREE) (list "lab" "fart.txt")) #true)
+
+  
