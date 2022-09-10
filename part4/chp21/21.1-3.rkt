@@ -1,6 +1,7 @@
 ;; The first three lines of this file were inserted by DrRacket. They record metadata
 ;; about the language level of this file in a form that our tools can easily process.
-#reader(lib "htdp-intermediate-lambda-reader.ss" "lang")((modname |21.1|) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
+#reader(lib "htdp-intermediate-lambda-reader.ss" "lang")((modname 21.1-3) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
+;;; SECTION 21.1 ;;;
 (define-struct add [left right])
 (define-struct mul [left right])
 
@@ -115,6 +116,7 @@
 
 (check-expect (interpreter-expr '(+ (* 3 3) (* 4 4))) 25)
 
+;;; SECTION 21.2 ;;;
 ; EX 352
 ; BSL-var-expr Symbol Number -> BSL-var-expr
 ; produces the given BSL-var-expr with all occurrences of the given symbol replaced by the
@@ -149,10 +151,10 @@
 (define (eval-variable expr)
   (cond
     [(numeric? expr) (eval-expression expr)]
-    [else (error "expression contains a variable")]))
+    [else (error "expression contains an undefined variable")]))
 
 (check-expect (eval-variable (make-mul 1/2 (make-mul 4 3))) 6)
-(check-error (eval-variable (make-mul 1/2 (make-mul 'x 3))) "expression contains a variable")
+(check-error (eval-variable (make-mul 1/2 (make-mul 'x 3))) "expression contains an undefined variable")
 
 ; An AL (short for association list) is [List-of Association].
 ; An Association is a list of two items:
@@ -190,3 +192,102 @@
 
 (check-error (eval-var-lookup (make-add (make-add 'x 'y) (make-add (make-add 'a 4) 3))
                               (list (list 'x 2) (list 'y 1) (list 'z 4))) "the variable 'a is not defined")
+
+;;; SECTION 21.3 ;;;
+; EX 356
+; A BSL-fun-expr is one of: 
+; – Number
+; – Symbol
+; – (make-add BSL-fun-expr BSL-fun-expr)
+; – (make-mul BSL-fun-expr BSL-fun-expr)
+; - (make-func-app Symbol BSL-fun-expr)
+
+(define-struct func-app [name argument])
+; a func-app-name is a symbol, a func-app-argument is a BSL-fun-expr
+
+; EX 358
+; A BSL-fun-def is:
+; - (make-func-def Symbol Symbol BSL-fun-expr)
+
+; A BSL-fun-def* is one of:
+; -'()
+; -(cons BSL-fun-def BSL-fun-def*)
+
+(define-struct func-def [name parameter body])
+
+(define da-fgh (list (make-func-def 'f 'x (make-add 3 'x))
+                     (make-func-def 'g 'y (make-func-app 'f (make-mul 2 'y)))
+                     (make-func-def 'h 'v (make-add (make-func-app 'f 'v) (make-func-app 'g 'v)))))
+
+; EX 357
+; BSL-fun-expr Symbol Symbol BSL-fun-expr -> Number
+; returns the value of the first given function expression, the first given symbol is a function's name
+; the second symbol is the function's parameter, the second expression is the function's body
+(define (eval-definition1 ex f x b)
+  (cond
+    [(number? ex) ex]
+    [(or
+      (symbol? ex)
+      (add? ex)
+      (mul? ex)) (eval-variable ex)]
+    [(func-app? ex) (cond
+                      [(equal? (func-app-name ex) f) (local (
+                                                     (define arg (func-app-argument ex))
+                                                     (define value (eval-definition1 arg f x b))
+                                                     (define plugd (subst b x value)))
+                                               (eval-definition1 plugd f x b))]
+                      [else (error (func-app-name ex) " is undefined")])]))
+
+(check-expect (eval-definition1 (make-func-app 'f 4) 'f 'x (make-add 'x (make-mul 3 'x))) 16)
+(check-expect (eval-definition1 (make-func-app 'f (make-mul 4 2)) 'f 'x (make-add 'x (make-mul 3 'x))) 32)
+
+
+
+
+; BSL-fun-def* Symbol -> BSL-fun-def
+; retrieves the definition of f in da
+; signals an error if there is none
+(check-expect (lookup-def da-fgh 'g) (make-func-def 'g 'y (make-func-app 'f (make-mul 2 'y))))
+(define (lookup-def da f)
+  (cond
+    [(empty? da) (error f " is undefined")]
+    [(equal? (func-def-name (first da)) f) (first da)]
+    [else (lookup-def (rest da) f)]))
+
+; EX 359
+; BSL-fun-expr BSL-fun-def* -> Number
+; produces the result that DrRacket shows if you evaluate ex in the interactions area,
+; assuming the definitions area contains da.
+(define (eval-function* ex da)
+  (cond
+    [(number? ex) ex]
+    [(symbol? ex) (error ex " is undefined")]
+    [(add? ex) (eval-variable (make-add (eval-function* (add-left ex) da) (eval-function* (add-right ex) da)))]
+    [(mul? ex) (eval-variable (make-mul (eval-function* (mul-left ex) da) (eval-function* (mul-right ex) da)))]
+    [(func-app? ex) (cond
+                      [(func-app? (func-app-argument ex)) (eval-function* (make-func-app (func-app-name ex)
+                                                                                         (eval-function* (func-app-argument ex) da))da )]
+                      [(func-app? (func-def-body (lookup-def da (func-app-name ex))))
+                         (local (
+                                 (define definition (lookup-def da (func-app-name ex)))
+                                 (define nested-func-app-name (func-app-name (func-def-body definition)))
+                                 (define nested-func-app-arg (func-app-argument
+                                                              (func-def-body definition)))
+                                 (define resolved-arg (eval-function* (subst nested-func-app-arg
+                                                                               (func-def-parameter definition)
+                                                                               (func-app-argument ex)) da)))
+                           (eval-function* (make-func-app nested-func-app-name resolved-arg) da))]
+                      [(func-def? (lookup-def da (func-app-name ex)))
+                         (local (
+                                 (define definition (lookup-def da (func-app-name ex)))
+                                 (define resolved-arg (eval-function* (func-app-argument ex) da))
+                                 (define ex-w-func-applied (eval-definition1 (make-func-app (func-def-name definition) resolved-arg)
+                                                                             (func-def-name definition)
+                                                                             (func-def-parameter definition)
+                                                                             (func-def-body definition))))
+                           ex-w-func-applied)]
+                      [else (error (func-app-name ex) " is undefined")])]))
+
+(check-expect (eval-function* (make-func-app 'f 3) da-fgh) 6)
+(check-expect (eval-function* (make-func-app 'g 1) da-fgh) 5)
+(check-expect (eval-function* (make-func-app 'h (make-func-app 'g 1)) da-fgh) 21)
