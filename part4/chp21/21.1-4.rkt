@@ -151,10 +151,10 @@
 (define (eval-variable expr)
   (cond
     [(numeric? expr) (eval-expression expr)]
-    [else (error "expression contains an undefined variable")]))
+    [else (error expr " contains an undefined variable")]))
 
 (check-expect (eval-variable (make-mul 1/2 (make-mul 4 3))) 6)
-(check-error (eval-variable (make-mul 1/2 (make-mul 'x 3))) "expression contains an undefined variable")
+(check-error (eval-variable (make-mul 1/2 (make-mul 'x 3))) "(make-mul 0.5 (make-mul 'x 3)) contains an undefined variable")
 
 ; An AL (short for association list) is [List-of Association].
 ; An Association is a list of two items:
@@ -223,6 +223,8 @@
 ; BSL-fun-expr Symbol Symbol BSL-fun-expr -> Number
 ; returns the value of the first given function expression, the first given symbol is a function's name
 ; the second symbol is the function's parameter, the second expression is the function's body
+; CANNOT handle nested function applications, needs the ability to manipulate a BSL-fun-def* which is provided in
+; eval-function* below
 (define (eval-definition1 ex f x b)
   (cond
     [(number? ex) ex]
@@ -240,9 +242,9 @@
 
 (check-expect (eval-definition1 (make-func-app 'f 4) 'f 'x (make-add 'x (make-mul 3 'x))) 16)
 (check-expect (eval-definition1 (make-func-app 'f (make-mul 4 2)) 'f 'x (make-add 'x (make-mul 3 'x))) 32)
-
-
-
+;(check-expect (eval-definition1 (make-func-app 'g 1) 'g 'y (make-func-app 'f (make-mul 2 'y))) 5)
+;(check-expect (eval-definition1 (make-func-app 'h (make-func-app 'g 1)) 'h 'v (make-add (make-func-app 'f 'v)
+;                                                                                        (make-func-app 'g 'v))) 21)
 
 ; BSL-fun-def* Symbol -> BSL-fun-def
 ; retrieves the definition of f in da
@@ -265,8 +267,52 @@
     [(add? ex) (eval-variable (make-add (eval-function* (add-left ex) da) (eval-function* (add-right ex) da)))]
     [(mul? ex) (eval-variable (make-mul (eval-function* (mul-left ex) da) (eval-function* (mul-right ex) da)))]
     [(func-app? ex) (cond
-                      [(func-app? (func-app-argument ex)) (eval-function* (make-func-app (func-app-name ex)
-                                                                                         (eval-function* (func-app-argument ex) da))da )]
+                      [(or (and (add? (func-def-body (lookup-def da (func-app-name ex))))
+                                (or (func-app? (add-left (func-def-body (lookup-def da (func-app-name ex)))))
+                                    (func-app? (add-right (func-def-body (lookup-def da (func-app-name ex)))))))
+                           (and (mul? (func-def-body (lookup-def da (func-app-name ex))))
+                                (or (func-app? (mul-left (func-def-body (lookup-def da (func-app-name ex)))))
+                                    (func-app? (mul-right (func-def-body (lookup-def da (func-app-name ex))))))))
+                       (local (; add-or-muli-string -> Number
+                               (define (solve-func-w-func-nested-in-add-or-mul-in-def-body opr)
+                                 (local (
+                                         (define definition (lookup-def da (func-app-name ex)))
+                                         (define definition-body (func-def-body (lookup-def da (func-app-name ex))))
+                                         (define resolved-arg (eval-function* (func-app-argument ex) da))
+                                         (define func-def-opr-left
+                                           (cond
+                                             [(equal? opr "add") (add-left definition-body)]
+                                             [(equal? opr "mul") (mul-left definition-body)]))
+                                         (define func-def-opr-right
+                                           (cond
+                                             [(equal? opr "add") (add-right definition-body)]
+                                             [(equal? opr "mul") (mul-right definition-body)]))
+                                         (define evaluated-def-opr-left
+                                           (cond
+                                             [(func-app? func-def-opr-left)
+                                                (eval-function* (make-func-app (func-app-name func-def-opr-left) resolved-arg) da)]
+                                             [else (eval-function* func-def-opr-left)]))
+                                         (define evaluated-def-opr-right
+                                           (cond
+                                             [(func-app? func-def-opr-right)
+                                              (eval-function* (make-func-app (func-app-name func-def-opr-right) resolved-arg) da)]
+                                             [else (eval-function* func-def-opr-right)]))
+                                         (define evaluated-def-body
+                                           (cond
+                                             [(equal? opr "add") (make-add evaluated-def-opr-left evaluated-def-opr-right)]
+                                             [(equal? opr "mul") (make-mul evaluated-def-opr-left evaluated-def-opr-right)]))
+                                         (define orig-func-w-def-body-evaluated
+                                         (eval-definition1 (make-func-app (func-def-name definition) resolved-arg)
+                                                                          (func-def-name definition)
+                                                                          (func-def-parameter definition)
+                                                                          evaluated-def-body)))
+                                   orig-func-w-def-body-evaluated)))
+                         (cond
+                           [(add? (func-def-body (lookup-def da (func-app-name ex))))
+                            (solve-func-w-func-nested-in-add-or-mul-in-def-body "add")]
+                           [(mul? (func-def-body (lookup-def da (func-app-name ex))))
+                            (solve-func-w-func-nested-in-add-or-mul-in-def-body "mul")]))]
+
                       [(func-app? (func-def-body (lookup-def da (func-app-name ex))))
                          (local (
                                  (define definition (lookup-def da (func-app-name ex)))
@@ -291,3 +337,126 @@
 (check-expect (eval-function* (make-func-app 'f 3) da-fgh) 6)
 (check-expect (eval-function* (make-func-app 'g 1) da-fgh) 5)
 (check-expect (eval-function* (make-func-app 'h (make-func-app 'g 1)) da-fgh) 21)
+
+; EX 360
+; a BSL-da-all is one of the following:
+; -'()
+; -Association List
+; -BSL-fun-def*
+; -[List-of BSL-da-all]
+
+; A BSL-fun-def is:
+; - (make-func-def Symbol Symbol BSL-fun-expr)
+
+; A BSL-fun-def* is one of:
+; -'()
+; -(cons BSL-fun-def BSL-fun-def*)
+
+; An Association is a list of two items:
+;   (cons Symbol (cons Number '())).
+
+(define EXAMPLE-DA-ALL (list
+                        (list 'close-to-pi 3.14)
+
+                        (make-func-def 'area-of-circle 'r (make-mul 'close-to-pi (make-mul 'r 'r)))
+
+                        (make-func-def 'volume-of-10-cylinder 'r (make-mul 10 (make-func-app 'area-of-circle 'r)))))
+
+
+; BSL-da-all Symbol -> [Maybe-Association]
+; consumes a BSL-da-all, da, and a symbol, x. Produces a representation of a constant definition whose name is x
+; if one exists in da. Otherwise, it produces an error informing the user that no such constant definition can be found
+(define (lookup-con-def da x)
+  (cond
+    [(ormap list? da) (local (
+                              (define (find-con-def da)
+                                (cond
+                                  [(empty? da) (error "the constant definition " x " cannot be found.")]
+                                  [else (cond
+                                          [(and (list? (first da))
+                                                (equal? (first (first da)) x)) (first da)]
+                                          [else (find-con-def (rest da))])])))
+                        (find-con-def da))]
+    [else (error "the constant definition " x " cannot be found.")]))
+
+(check-expect (lookup-con-def EXAMPLE-DA-ALL 'close-to-pi) (list 'close-to-pi 3.14))
+(check-error (lookup-con-def EXAMPLE-DA-ALL 'fartsack) "the constant definition 'fartsack cannot be found.")
+
+; BSL-da-all Symbol -> [Maybe-BSL-func-def]
+; same functionality as lookup-con-def except for function definfitions
+(define (lookup-func-def da f)
+  (cond
+    [(ormap func-def? da) (local (
+                              (define (find-func-def da)
+                                (cond
+                                  [(empty? da) (error "the function definition " f " cannot be found.")]
+                                  [else (cond
+                                          [(and (func-def? (first da))
+                                                (equal? (func-def-name (first da)) f)) (first da)]
+                                          [else (find-func-def (rest da))])])))
+                        (find-func-def da))]
+    [else (error "the function definition " f " cannot be found.")]))
+
+(check-expect (lookup-func-def EXAMPLE-DA-ALL 'area-of-circle)
+              (make-func-def 'area-of-circle 'r (make-mul 'close-to-pi (make-mul 'r 'r))))
+
+; EX 361
+; BSL-func-expr BSL-da-all -> BSL-func-expr
+; produces the same value that DrRacket shows if the expression is entered at the prompt in the interactions area
+; and the definitions area contains the appropriate definitions
+(define (eval-all ex da)
+  (cond
+    [(number? ex) ex]
+    [(symbol? ex) (second (lookup-con-def da ex))]
+    [(add? ex) (eval-function* (make-add (eval-all (add-left ex) da) (eval-all (add-right ex) da)))]
+    [(mul? ex) (eval-function* (make-mul (eval-all (mul-left ex) da) (eval-all (mul-right ex) da)))]
+    [(func-app? ex) (local (
+                            (define definition (lookup-func-def da (func-app-name ex)))
+                            (define def-param (func-def-parameter definition))
+                            (define def-body (func-def-body definition))
+                            (define evaluated-def-body
+                              (local (
+                                      (define (evaluate-def-body def-body def-param)
+                                        (cond
+                                          [(number? def-body) def-body]
+                                          [(and (not (equal? def-body def-param))
+                                                (symbol? def-body)) (eval-all def-body da)]
+                                          [(equal? def-body def-param) def-body]
+                                          [(add? def-body) (make-add (cond
+                                                                       [(equal? (add-left def-body) def-param)
+                                                                        def-param]
+                                                                       [else (evaluate-def-body (add-left def-body) def-param)])
+                                                                     (cond
+                                                                       [(equal? (add-right def-body) def-param)
+                                                                        def-param]
+                                                                       [else (evaluate-def-body (add-right def-body) def-param)]))]
+                                          [(mul? def-body) (make-mul (cond
+                                                                       [(equal? (mul-left def-body) def-param)
+                                                                        def-param]
+                                                                       [else (evaluate-def-body (mul-left def-body) def-param)])
+                                                                     (cond
+                                                                       [(equal? (mul-right def-body) def-param)
+                                                                        def-param]
+                                                                       [else (evaluate-def-body (mul-right def-body) def-param)]))]
+                                         [(func-app? def-body) 
+                                                              (cond 
+                                                                [(equal? (func-app-argument def-body) def-param)
+                                                                 (eval-all (make-func-app (func-app-name def-body)
+                                                                                          (func-app-argument ex)) da)]
+                                                                [else (eval-all def-body da)])])))
+                                (evaluate-def-body def-body def-param))))
+                      
+                      (eval-definition1 (make-func-app (func-app-name ex) (eval-all (func-app-argument ex) da))
+                                        (func-app-name ex)
+                                        def-param
+                                        evaluated-def-body))]))
+
+(check-expect (eval-all 'close-to-pi EXAMPLE-DA-ALL) 3.14)
+(check-expect (eval-all (make-func-app 'area-of-circle 2) EXAMPLE-DA-ALL) 12.56)
+(check-expect (eval-all (make-func-app 'volume-of-10-cylinder 2) EXAMPLE-DA-ALL) 125.6)
+
+; EX 362
+; S-expr SL -> Number
+; parses the expression and list of definitions then uses eval-all to evaluate the expression
+(define (interpreter s-expr sl)
+  
