@@ -1,6 +1,6 @@
 ;; The first three lines of this file were inserted by DrRacket. They record metadata
 ;; about the language level of this file in a form that our tools can easily process.
-#reader(lib "htdp-intermediate-lambda-reader.ss" "lang")((modname 21.1-3) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
+#reader(lib "htdp-intermediate-lambda-reader.ss" "lang")((modname 21.1-4) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
 ;;; SECTION 21.1 ;;;
 (define-struct add [left right])
 (define-struct mul [left right])
@@ -459,4 +459,57 @@
 ; S-expr SL -> Number
 ; parses the expression and list of definitions then uses eval-all to evaluate the expression
 (define (interpreter s-expr sl)
+  (local (
+          (define parsed-expr (parse-func s-expr))
+          (define (parse-lo-defs sl)
+            (cond
+              [(empty? sl) '()]
+              [else (cons (parse-func (first sl)) (parse-lo-defs (rest sl)))])))
+    (eval-all parsed-expr (parse-lo-defs sl))))
+
+(check-expect (interpreter '(f 10) '((define (f s) (* (* s s) fart))(define fart 10))) 1000)
+
+;TODO: test parse-lo-defs
   
+; S-expr -> BSL-expr
+(define (parse-func s)
+  (cond
+    [(atom? s) (parse-atom-func s)]
+    [else (parse-sl-func s)]))
+
+; SL -> BSL-expr
+(define (parse-func-app s)
+  (make-func-app (first s) (parse-func (second s))))
+ 
+; SL -> BSL-expr 
+(define (parse-add-mul-or-con-def s)
+  (cond
+    [(symbol=? (first s) '+)
+     (make-add (parse-func (second s)) (parse-func (third s)))]
+    [(symbol=? (first s) '*)
+     (make-mul (parse-func (second s)) (parse-func (third s)))]
+    [(symbol=? (first s) 'define)
+     (list (parse-func (second s)) (parse-func (third s)))]
+    [else (error WRONG)]))
+
+; SL -> BSL-expr
+(define (parse-func-def s)
+  (cond
+    [(symbol=? (first s) 'define)
+     (make-func-def (second s) (third s) (parse-func (fourth s)))]
+    [else (error WRONG)]))
+ 
+; Atom -> BSL-expr 
+(define (parse-atom-func s)
+  (cond
+    [(number? s) s]
+    [(string? s) (error WRONG)]
+    [(symbol? s) s]))
+
+; SL -> BSL-expr
+(define (parse-sl-func s)
+  (cond
+    [(and (equal? (length s) 2) (symbol? (first s))) (parse-func-app s)]
+    [(and (equal? (length s) 3) (symbol? (first s))) (parse-add-mul-or-con-def s)]
+    [(and (equal? (length s) 4) (symbol? (first s)) (symbol? (second s)) (symbol? (third s))) (parse-func-def s)]
+    [else (error WRONG)]))
