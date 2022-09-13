@@ -1,6 +1,7 @@
 ;; The first three lines of this file were inserted by DrRacket. They record metadata
 ;; about the language level of this file in a form that our tools can easily process.
 #reader(lib "htdp-intermediate-lambda-reader.ss" "lang")((modname 21.1-4) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
+; LESSON LEARNED: Do not make a new function for every refinement. Build on the already existing functions as new functionality is added to the project.
 ;;; SECTION 21.1 ;;;
 (define-struct add [left right])
 (define-struct mul [left right])
@@ -482,22 +483,21 @@
   (make-func-app (first s) (parse-func (second s))))
  
 ; SL -> BSL-expr 
-(define (parse-add-mul-or-con-def s)
+(define (parse-add-mul-or-def s)
   (cond
     [(symbol=? (first s) '+)
      (make-add (parse-func (second s)) (parse-func (third s)))]
     [(symbol=? (first s) '*)
      (make-mul (parse-func (second s)) (parse-func (third s)))]
+    [(and (symbol=? (first s) 'define) (list? (second s)))
+     (parse-func-def s)]
     [(symbol=? (first s) 'define)
      (list (parse-func (second s)) (parse-func (third s)))]
     [else (error WRONG)]))
 
 ; SL -> BSL-expr
 (define (parse-func-def s)
-  (cond
-    [(symbol=? (first s) 'define)
-     (make-func-def (second s) (third s) (parse-func (fourth s)))]
-    [else (error WRONG)]))
+  (make-func-def (first (second s)) (second (second s)) (parse-func (third s))))
  
 ; Atom -> BSL-expr 
 (define (parse-atom-func s)
@@ -510,6 +510,6 @@
 (define (parse-sl-func s)
   (cond
     [(and (equal? (length s) 2) (symbol? (first s))) (parse-func-app s)]
-    [(and (equal? (length s) 3) (symbol? (first s))) (parse-add-mul-or-con-def s)]
+    [(and (equal? (length s) 3) (symbol? (first s))) (parse-add-mul-or-def s)]
     [(and (equal? (length s) 4) (symbol? (first s)) (symbol? (second s)) (symbol? (third s))) (parse-func-def s)]
     [else (error WRONG)]))
