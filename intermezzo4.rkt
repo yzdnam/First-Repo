@@ -54,7 +54,7 @@
        (local ((define inex1-base-dropped-mantissa-sum (+ (* inex1-mantissa base) inex2-mantissa))
                (define inex2-base-dropped-mantissa-sum (+ (* inex2-mantissa base) inex1-mantissa))
                (define (inex+exp-diff1 bigger-inex smaller-inex)
-                 (cond
+                 (cond ;TODO - abstract inex+ for inex's with exponent's differing by 1 so the code isn't copied for inex1>inex2 and vice-versa
                    [(and (> (round (/ (+ (* (inex-mantissa bigger-inex) base) (inex-mantissa smaller-inex)) base)) max-mantissa)
          (cond ; exponents differ by 1
            [(and (< inex1-fullexp inex2-fullexp)
