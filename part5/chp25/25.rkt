@@ -163,6 +163,27 @@
 ; EX 430
 ; variant of quick-sort< that uses only one comparison function. Its partitioning step divides the given list into a list that contains the items of alon on one side of the pivot
 ; and another one with those that are not on that side
-(define (quick-sort.430 alon)
-  alon)
+; also accepts a comparison operator so that the function can sort in either direction
+(define (quick-sort.430 cmp alon)
+  (cond
+    [(empty? alon) '()]
+    [(equal? (length alon) 1) alon]
+    [else (local ((define pivot (first alon))
+                  (define first-list (return-half cmp (rest alon) pivot))
+                  (define (make-opposite-list orig-list other-list) ; if a member isn't in the other list, puts it in a new list
+                    (cond
+                      [(empty? orig-list) '()]
+                      [else (local ((define first-orig (first orig-list)))
+                              (if (or (equal? first-orig pivot) (member? first-orig other-list))
+                                  (make-opposite-list (rest orig-list) other-list)
+                                  (cons first-orig (make-opposite-list (rest orig-list) other-list))))]))
+                  (define opposite-list (make-opposite-list alon first-list)))
+            (append (quick-sort.430 cmp first-list)
+                    (accum-dupes alon pivot)
+                    (quick-sort.430 cmp opposite-list)))]))
   
+(check-expect (quick-sort.430 < (list 3 3 1 2 5 8 2 2))
+              (list 1 2 2 2 3 3 5 8))
+
+(check-expect (quick-sort.430 > (list 3 3 1 2 5 8 2 2))
+              (list 8 5 3 3 2 2 2 1))
