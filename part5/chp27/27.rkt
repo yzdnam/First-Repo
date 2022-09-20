@@ -55,7 +55,32 @@
       (<= (abs (- x 4)) 0.1)))
 
 ; EX 446 experiment with different values for \epsilon
+
 ; EX 447 use find-root with poly and an interval that contains both roots
 ; any interval containing both roots of poly will have a left and right limit that are both positive which will cause cond to signal an error because
 ; all conditions will be false. this aligns with one of the conditions for the intermediate value theorem, namely that, given an interval of [a,b],
 ; f(a) and f(b) must be on opposite sides of x if the theorem is to hold for the function (the other condition being that the function must be continuous)
+
+; EX 448 find-root terminates for all (continuous) f, left, and right for which the assumption holds because the difference
+; between (f left) or (f right) and (f@mid) will approach zero after every call of the function
+
+; EX 449 re-write find-root so it doesn't compute the value of f for each boundary value more than once and design
+; a helper function that consumes (f left) and (f right) at each recursive stage, saving computational steps during the
+; execution of the function
+(define (find-root.449 f left right)
+  (cond
+    [(<= (- right left) ε) left]
+    [else
+      (local ((define mid (/ (+ left right) 2))
+              (define f@mid (f mid))
+              (define f-left (f left))
+              (define f-right (f right))
+              (define (find-root-helper left right f-left f-right)
+                
+        (cond
+          [(or (<= f-left 0 f@mid) (<= f@mid 0 f-left))
+           (find-root.449 f left mid)]
+          [(or (<= f@mid 0 f-right) (<= f-right 0 f@mid))
+           (find-root.449 f mid right)]))]))
+
+(check-satisfied (find-root.449 poly 3 6) close-to-2-or-4?)
