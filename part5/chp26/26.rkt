@@ -154,6 +154,7 @@
 ; of n and m cannot be greater than the smaller of n and m and greatest-divisor-<= recurses on numbers that become progressively smaller as the function checks for a common
 ; divisor
 
+; finds the gcd using the insight that the gcd of any two numbers is the gcd of the smaller number and the remainder of the larger number divided by the smaller number
 (define (gcd-generative n m)
   (local (; N[>= 1] N[>=1] -> N
           ; generative recursion
@@ -169,6 +170,8 @@
 ; on the number of members in a list because parts of the list may already be sorted
 
 ; EX 442
+; determine the point where quick-sort< begins to complete sorting faster than sort< using the create-tests function
+; result is ~83
 (define (quick-sort< alon)
   (cond
     [(empty? alon) '()]
@@ -216,7 +219,6 @@
 
 ;(check-expec (quick-sort< (list 1 14 0 14 3 4 7 8 8 1 1 6 7 5 2 2 3 2 0 0))
 ;             (list
-; determine the point where quick-sort< begins to complete sorting faster than sort< using the create-tests function
 ; creates large test cases of length len randomly for sort< and quick-sort<
 (define (create-tests len)
   (local ((define (create-list local-len)
@@ -224,3 +226,36 @@
               [(zero? len) '()]
               [else (cons (random len) (create-tests (- local-len 1)))])))
     (create-list len)))
+
+(define (test-quick x)
+  (time (quick-sort< (create-tests x))))
+(define (test-reg-sort x)
+  (time (sort< (create-tests x))))
+
+; EX 443 - explain why it would be impossible to find a divisor using the following template
+(define (wrong-gcd-structural n m)
+  (cond
+    [(and (= n 1) (= m 1)) ...]
+    [(and (> n 1) (= m 1)) ...]
+    [(and (= n 1) (> m 1)) ...]
+    [else
+     (... (gcd-structural (sub1 n) (sub1 m)) ...
+      ... (gcd-structural (sub1 n) m) ...
+      ... (gcd-structural n (sub1 m)) ...)]))
+; it would be impossible to find a divisor using the template above because the base cases will return 1 and the recursions will all inevitably reach the base case
+
+; EX 444 - explain why divisors, in the suite of functions below, consumes two numbers and consumes S as the first argument in both uses
+; the first number divisor consumes limits the the size of the output list, this allows the top-level function to save cycles when it is processing both divisor lists with
+; largest-common
+(define (gcd-structural S L)
+  (largest-common (divisors S S) (divisors S L)))
+ 
+; N[>= 1] N[>= 1] -> [List-of N]
+; computes the divisors of l smaller or equal to k
+(define (divisors k l)
+  '())
+ 
+; [List-of N] [List-of N] -> N
+; finds the largest number common to both k and l
+(define (largest-common k l)
+  1)
