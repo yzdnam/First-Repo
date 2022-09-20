@@ -153,3 +153,74 @@
 ; initially given, minus 1. if the number given to greatest-divisor-< is 1, the function returns 1. greatest-divisor-<= is called on (min n m) because the greatest common divisor
 ; of n and m cannot be greater than the smaller of n and m and greatest-divisor-<= recurses on numbers that become progressively smaller as the function checks for a common
 ; divisor
+
+(define (gcd-generative n m)
+  (local (; N[>= 1] N[>=1] -> N
+          ; generative recursion
+          ; (gcd L S) == (gcd S (remainder L S)) 
+          (define (clever-gcd L S)
+            (cond
+              [(= S 0) L]
+              [else (clever-gcd S (remainder L S))])))
+    (clever-gcd (max m n) (min m n))))
+
+; EX 439 and 440: shows how long gcd-structural takes compared to gcd-generative using the time function
+; EX 441: shows how a general rule cannot be applied to determine the number of recursions it will take to sort a list based
+; on the number of members in a list because parts of the list may already be sorted
+
+; EX 442
+(define (quick-sort< alon)
+  (cond
+    [(empty? alon) '()]
+    [(equal? (length alon) 1) alon]
+    [else (local ((define pivot (first alon)))
+            (append (quick-sort< (smallers alon pivot))
+                    (accum-dupes alon pivot)
+                    (quick-sort< (largers alon pivot))))]))
+
+(define (return-half opr alon pivot)
+  (cond
+    [(empty? alon) '()]
+    [else (local ((define first-alon (first alon)))
+            (if (opr first-alon pivot) (cons first-alon (return-half opr (rest alon) pivot))
+              (return-half opr (rest alon) pivot)))]))
+
+(define (smallers alon pivot)
+  (return-half < alon pivot))
+
+(define (largers alon pivot)
+  (return-half > alon pivot))
+
+(define (accum-dupes alon n)
+  (cond
+    [(empty? alon) '()]
+    [else (local ((define first-alon (first alon)))
+            (if (equal? first-alon n) (cons first-alon (accum-dupes (rest alon) n))
+                (accum-dupes (rest alon) n)))]))
+
+; List-of-numbers -> List-of-numbers
+; produces a sorted version of l
+(define (sort< l)
+  (cond
+    [(empty? l) '()]
+    [(cons? l) (insert (first l) (sort< (rest l)))]))
+ 
+; Number List-of-numbers -> List-of-numbers
+; inserts n into the sorted list of numbers l 
+(define (insert n l)
+  (cond
+    [(empty? l) (cons n '())]
+    [else (if (<= n (first l))
+              (cons n l)
+              (cons (first l) (insert n (rest l))))]))
+
+;(check-expec (quick-sort< (list 1 14 0 14 3 4 7 8 8 1 1 6 7 5 2 2 3 2 0 0))
+;             (list
+; determine the point where quick-sort< begins to complete sorting faster than sort< using the create-tests function
+; creates large test cases of length len randomly for sort< and quick-sort<
+(define (create-tests len)
+  (local ((define (create-list local-len)
+            (cond
+              [(zero? len) '()]
+              [else (cons (random len) (create-tests (- local-len 1)))])))
+    (create-list len)))
