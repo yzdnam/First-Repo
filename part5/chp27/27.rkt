@@ -151,3 +151,94 @@
 (check-expect (find-linear (make-table 6 monotonic-func)) 2)
 ; 1023 calls to find-linear to find the root in slot 1023 in a 1024 slot table
 ; 1024(1/2)^x = 2 => x = 9 calls to find-binary to find the same root in the same table
+
+; EX 452 - make purpose statements for first-line and remove-first-line
+; File -> [List-of Line]
+; converts a file into a list of lines 
+(define (file->list-of-lines afile)
+  (cond
+    [(empty? afile) '()]
+    [else
+     (cons (first-line afile)
+           (file->list-of-lines (remove-first-line afile)))]))
+ 
+; File -> Line
+; retrieves the prefix of afile up to the first occurrence of NEWLINE using a structural design that checks every 1string to see if it's a newline character
+(define (first-line afile)
+  (cond
+    [(empty? afile) '()]
+    [(string=? (first afile) NEWLINE) '()]
+    [else (cons (first afile) (first-line (rest afile)))]))
+ 
+; File -> File
+; drops the suffix of afile behind the first occurrence of NEWLINE using a structural design that checks every 1string to see if it's a newline character
+(define (remove-first-line afile)
+  (cond
+    [(empty? afile) '()]
+    [(string=? (first afile) NEWLINE) (rest afile)]
+    [else (remove-first-line (rest afile))]))
+ 
+(define NEWLINE "\n") ; the 1String
+
+; EX 453 - design tokenize
+; a Token is either a 1string or a string that consists of lower-case letters and nothing else
+; Line -> [List-of Token]
+; turns a line into a list of tokens by linearly searching for whitespace, taking the list of 1strings/1string preceding an occurence of white space, imploding that list of
+; 1strings/1string and returning the resulting token to the output list then removing that token from the original input list
+(define (tokenize aline)
+  (cond
+    [(empty? aline) '()]
+    [else
+     (cons (implode (first-token aline))
+           (tokenize (remove-first-token aline)))]))
+
+; creates a list with only 1strings/1string from a line using whitespace as a delimiter
+; Line -> Line
+(define (first-token aline)
+  (cond
+    [(empty? aline) '()]
+    [(string-whitespace? (first aline)) '()]
+    [else (cons (first aline) (first-token (rest aline)))]))
+
+; removes the first token from the original input line
+; Line -> Line
+(define (remove-first-token aline)
+  (cond
+    [(empty? aline) '()]
+    [(string-whitespace? (first aline)) (rest aline)]
+    [else (remove-first-token (rest aline))]))
+
+(check-expect (tokenize (list "a" "b" "c" " " "f" "a" "r" "t" " " "a")) (list "abc" "fart" "a"))
+
+; EX 454 - design create-matrix
+; consumes and number n and a list of n^2 numbers. produces an n x n matrix. solved by using the same algorithm as the last two exercises
+; N [List-of N] -> [List-of [List-of N]
+(define (create-matrix row-len lon)
+  (local (; creates a list of the first row-len numbers in the given lon
+          (define (create-row i lon)
+            (cond
+              [(or (empty? lon) (equal? i row-len)) '()]
+              [else (cons (first lon) (create-row (add1 i) (rest lon)))]))
+          ; removes the first row-len numbers from the given lon
+          (define (remove-first-row i lon)
+            (cond
+              [(empty? lon) '()]
+              [(equal? i row-len) (rest lon)]
+              [else (remove-first-row (add1 i) (rest lon))])))
+    (cond
+      [(or (empty? lon) (zero? row-len)) '()]
+      [else
+       (cons (create-row 0 lon)
+             (create-matrix row-len (remove-first-row 1 lon)))])))
+
+(check-expect
+  (create-matrix 2 (list 1 2 3 4))
+  (list (list 1 2)
+        (list 3 4)))
+
+(check-expect
+ (create-matrix 3 (list 9 8 7 2 4 5 6 4 1))
+ (list (list 9 8 7)
+       (list 2 4 5)
+       (list 6 4 1)))
+    
