@@ -1,7 +1,7 @@
 ;; The first three lines of this file were inserted by DrRacket. They record metadata
 ;; about the language level of this file in a form that our tools can easily process.
 #reader(lib "htdp-intermediate-lambda-reader.ss" "lang")((modname |28|) (read-case-sensitive #t) (teachpacks ()) (htdp-settings #(#t constructor repeating-decimal #f #t none #f () #f)))
-(define ϵ 0.1)
+(define ϵ 0.01)
 (define (poly x) (* (- x 2) (- x 4)))
 ; EX 455
 ; [Number -> Number] Number -> Number
@@ -88,6 +88,31 @@
 (check-within (integrate-rectangles (lambda (x) (* 3 (sqr x))) 0 10) 
               1000
               ϵ)
- 
+
+(define R 159) ; cross-over point for (* 3 (sqr x))) and an ϵ of 0.01
 (define (integrate-rectangles f a b)
-  a)
+  (local ((define rect-width (/ (- b a) R))
+          (define rect-wid-midpoint (/ rect-width 2))
+          (define (accum-rect-areas i)
+            (local ((define rect-x-midpoint (+ a (* rect-width i) rect-wid-midpoint)))
+              (cond
+                [(equal? i R) 0]
+                [else
+                 (+ (* rect-width (f rect-x-midpoint))
+                    (accum-rect-areas (add1 i)))]))))
+    (accum-rect-areas 0)))
+
+; EX 460
+; integrates a function f between the boundaries a and b using a divide-and-conquer strategy. use kepler's method when the
+; interval is sufficiently small
+(check-within (integrate-dc (lambda (x) 20) 12 22) 200 ϵ)
+(check-within (integrate-dc (lambda (x) (* 2 x)) 0 10) 100 ϵ)
+(check-within (integrate-dc (lambda (x) (* 3 (sqr x))) 0 10) 
+              1000
+              ϵ)
+
+(define (integrate-dc f a b)
+  (local ((define mid (/ (+ a b) 2))
+          (define integrate-combo f a b) ; TODO recursively divide the interval until it is small THEN integrate using kepler's
+                                         ; method
+    (+ (integrate-combo f a mid) (integrate-combo f mid b))
