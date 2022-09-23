@@ -112,7 +112,29 @@
               ϵ)
 
 (define (integrate-dc f a b)
+  (local ((define (slice-seg a b)
+            (local ((define mid (/ (+ a b) 2)))
+              (cond
+                [(<= (- b a) ϵ) (integrate-kepler f a b)]
+                [else
+                 (+ (slice-seg a mid) (slice-seg mid b))]))))
+    (slice-seg a b)))
+
+; EX 461
+; integrates the graph of a function by computing the area of 3 trapezoids: one under the entire interval and the two halves. if the delta between the two halfs is less than the
+; area of a rectangle of height ϵ and width b-a, return the given trapezoid, otherwise, continuing dividing the interval until the area under a set of half intervals meets the
+; criteria to return the whole trapezoid underneath the interval
+(check-within (integrate-adaptive (lambda (x) 20) 12 22) 200 ϵ)
+(check-within (integrate-adaptive (lambda (x) (* 2 x)) 0 10) 100 ϵ)
+(check-within (integrate-adaptive (lambda (x) (* 3 (sqr x))) 0 10) 
+              1000
+              ϵ)
+
+(define (integrate-adaptive f a b)
   (local ((define mid (/ (+ a b) 2))
-          (define integrate-combo f a b) ; TODO recursively divide the interval until it is small THEN integrate using kepler's
-                                         ; method
-    (+ (integrate-combo f a mid) (integrate-combo f mid b))
+          (define (trap-area a b)
+            (* (/ 1 2) (- b a) (+ (f a) (f b)))))
+    (cond
+      [(< (abs (- (trap-area a mid) (trap-area mid b))) (* ϵ (- b a))) (trap-area a b)]
+      [else (+ (integrate-adaptive f a mid) (integrate-adaptive f mid b))])))
+
