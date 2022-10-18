@@ -3,6 +3,7 @@
 ; Challenge
 ; write a procedure that computes the number of ways to make change for a given amount of cents given pennies, nickels, dimes, quarters, and half-dollars
 ; by means of an iterative process:
+; Solution in 1.2.2wkspce.rkt file
 
 (define (count-change amount) (cc amount (list 1 5 10 25)))
 (define (cc amount kinds-of-coins)
@@ -57,3 +58,23 @@
       [(= count 0) z]
       [else (f-iter/a (+ x (* 2 y) (* 3 z)) x y (- count 1))])) 
   (f-iter/a 2 1 0 n))
+
+; EX 1.12
+; returns the nth row of Pascal's triangle
+(define (p-tri n)
+  (cond
+    [(eqv? n 1) 1]
+    [(eqv? n 2) `(,(p-tri (- n 1)) ,(p-tri (- n 1)))]
+    [else (append '(1) (condense-row (p-tri (- n 1))) '(1))]))
+
+; [List-of Number] -> [List-of Number]
+; Takes a list of length n and returns a list of length n-1 by adding each number next to each other and returning the results in the new list
+(define (condense-row lon0)
+  (define (condense-row/a lon a)
+    (cond
+      [(eqv? (cdr lon) '()) a]
+      [else (condense-row/a (cdr lon) (cons (+ (car lon) (car (cdr lon))) a))]))
+  (condense-row/a lon0 '()))
+  
+; EX 1.13 on paper
+    
