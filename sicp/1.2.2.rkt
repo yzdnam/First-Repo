@@ -5,7 +5,7 @@
 ; by means of an iterative process:
 ; Solution in 1.2.2wkspce.rkt file
 
-(define (count-change amount) (cc amount (list 1 5 10 25)))
+(define (count-change amount) (cc amount (list 1 5 10 25 50)))
 (define (cc amount kinds-of-coins)
   (cond [(= amount 0) 1]
         [(or (< amount 0) (eqv? kinds-of-coins '())) 0]
