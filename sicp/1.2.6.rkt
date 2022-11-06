@@ -184,10 +184,17 @@
 
 ; EX 1.26
 ; explain why expmod.v3 is a θ(n) process instead of a θ(log n) process like expmod and expmod.v2
-(define (fe2 b n)
-  (define (fe-steps b n steps)
-  (cond ((= n 0) steps)
-        ((and (even? n) (= steps 0)) (fe-steps b (/ n 2) (+ steps 2)))
-        ((even? n) (fe-steps b (/ n 2) (+ steps (* 2 steps))))
-        (else (fe-steps b (- n 1) (inc steps)))))
-  (fe-steps b n 0))
+(define (expmod.v3 base exp m)
+  (cond ((= exp 0) 1)
+        ((even? exp)
+         (remainder (* (expmod.v3 base (/ exp 2) m)
+                       (expmod.v3 base (/ exp 2) m))
+                    m))
+        (else
+         (remainder (* base
+                       (expmod.v3 base (- exp 1) m))
+                    m))))
+; expmod and expmod.v2 will call "square" θ(log n) times
+; expmod.v3 will expand to apply *
+(define (fe n)
+  (+ n (* 3 (floor (/ (log n) (log 2))))))
