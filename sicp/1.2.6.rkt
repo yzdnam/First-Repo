@@ -195,6 +195,10 @@
                        (expmod.v3 base (- exp 1) m))
                     m))))
 ; expmod and expmod.v2 will call "square" θ(log n) times
-; expmod.v3 will expand to apply *
+; expmod.v3 calls itself twice during its execution therefore it will call * on the order of 2^(log-base2 n) times which is equivalent to n.
+; the solutions page explains it by showing that doubling the size of the input of an expmod operation that initially took n steps will result in an operation
+; taking n+1 steps. this shows that its order of growth is logarithmic.
+; on the other hand, when the size of the input for an expmod.v3 operation taking n steps is doubled, the number of steps is doubled as well meaning the its order
+; of growth is linear
 (define (fe n)
   (+ n (* 3 (floor (/ (log n) (log 2))))))
