@@ -43,15 +43,43 @@
 
 ; EX 1.28
 ; write a procedure that implements the Miller-Rabin Test for testing the primality of a number
+; Number Number Number -> Number
+; calculates the first number to the power of the second number, modulo the third number
+; whenever we perform the squaring step in m-rexpmod, we check to see if we have discovered a “nontrivial square root of
+; 1 modulo n,” that is, a number not equal to 1 or (- n 1) whose square is equal to 1 modulo n 
 (define (m-rexpmod base exp m)
   (cond ((= exp 0) 1)
         ((even? exp)
-         (remainder
-          (square (m-rexpmod base (/ exp 2) m))
-          m))
+         (if
+          (and
+           (not (or (= (expmod base (/ exp 2) m) (- m 1))
+                    (= (expmod base (/ exp 2) m) 1)))
+           (= (square (m-rexpmod base (/ exp 2) m))) m) 1)) 
+          0
+          (remainder
+           (square (m-rexpmod base (/ exp 2) m))
+           m)))
         (else
          (remainder
           (* base (m-rexpmod base (- exp 1) m))
           m))))
 
 (define (m-r n)
+  (define (try-itm-r a times)
+    (cond
+      [(> times 0)
+                  (if (= (m-rexpmod a (- n 1) n) 0)
+                      (begin (newline) (begin (display "not prime ") (display n)))
+                      (try-itm-r (+ 1 (random (- n 1))) (dec times)))]
+      [else (begin (newline) (begin (display "prime ") (display n)))]))
+  (try-itm-r (+ 1 (random (- n 1))) 10))
+
+(m-r 15)
+(m-r 21)
+(m-r 3)
+(m-r 11)
+(m-r 23)
+(m-r 561)
+(m-r 1105)
+(m-r 1729)
+(m-r 2465)
