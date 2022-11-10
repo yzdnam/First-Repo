@@ -48,21 +48,19 @@
 ; whenever we perform the squaring step in m-rexpmod, we check to see if we have discovered a “nontrivial square root of
 ; 1 modulo n,” that is, a number not equal to 1 or (- n 1) whose square is equal to 1 modulo n 
 (define (m-rexpmod base exp m)
-  (cond ((= exp 0) 1)
-        ((even? exp)
-         (if
-          (and
-           (not (or (= (expmod base (/ exp 2) m) (- m 1))
-                    (= (expmod base (/ exp 2) m) 1)))
-           (= (square (m-rexpmod base (/ exp 2) m))) m) 1)) 
-          0
-          (remainder
-           (square (m-rexpmod base (/ exp 2) m))
-           m)))
-        (else
-         (remainder
-          (* base (m-rexpmod base (- exp 1) m))
-          m))))
+  (cond
+    [(= exp 0) 1]
+    [(even? exp)
+     (cond
+       [(= (expmod (fast-expt base exp) 2 m) (- m 1))
+        (remainder (square (expmod base (/ exp 2) m)) m)]
+       [(= (expmod (fast-expt base exp) 2 m) 1)
+        (remainder (square (m-rexpmod base (/ exp 2) m)) m)]
+       [else 0])]
+    [else
+     (remainder
+       (* base (expmod base (- exp 1) m))
+       m)]))
 
 (define (m-r n)
   (define (try-itm-r a times)
@@ -74,11 +72,31 @@
       [else (begin (newline) (begin (display "prime ") (display n)))]))
   (try-itm-r (+ 1 (random (- n 1))) 10))
 
+(m-r 3)
+(m-r 5)
+(m-r 7)
+(m-r 11)
+(m-r 13)
+(m-r 17)
+(m-r 19)
+(m-r 23)
+(m-r 29)
+(m-r 31)
+(m-r 37)
+(m-r 41)
+(m-r 43)
+(m-r 47)
+(m-r 53)
+(m-r 59)
+(m-r 61)
+(m-r 67)
+(m-r 71)
+(m-r 73)
+(m-r 79)
+(m-r 83)
+(m-r 89) (m-r 97)
 (m-r 15)
 (m-r 21)
-(m-r 3)
-(m-r 11)
-(m-r 23)
 (m-r 561)
 (m-r 1105)
 (m-r 1729)
