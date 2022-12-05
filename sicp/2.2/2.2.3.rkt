@@ -248,3 +248,19 @@
 
 (define (adjoin-position new-row k rest-of-queens)
   (cons (list new-row (- k 1)) rest-of-queens))
+
+; EX 2.43
+(define (queens2.43 board-size)
+  (define (queen-cols2.43 k)
+    (if (= k 0)
+        (list empty-board)
+        (filter
+         (lambda (positions) (safe? k positions))
+         (flatmap
+          (lambda (new-row)
+            (map (lambda (rest-of-queens)
+                   (adjoin-position
+                    new-row k rest-of-queens))
+                 (queen-cols2.43 (- k 1))))
+            (enumerate-interval 0 (- board-size 1))))))
+  (queen-cols2.43 board-size))
