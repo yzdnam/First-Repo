@@ -68,24 +68,57 @@
         ((< x (car set)) false)
         (else (element-of-set?-ordered x (cdr set)))))
 
-(define (intersection-set set1 set2)
+(define (intersection-set-ordered set1 set2)
   (if (or (null? set1) (null? set2))
       '()
       (let ((x1 (car set1)) (x2 (car set2)))
         (cond ((= x1 x2)
-               (cons x1 (intersection-set (cdr set1)
+               (cons x1 (intersection-set-ordered (cdr set1)
                                           (cdr set2))))
               ((< x1 x2)
-               (intersection-set (cdr set1) set2))
+               (intersection-set-ordered (cdr set1) set2))
               ((< x2 x1)
-               (intersection-set set1 (cdr set2)))))))
+               (intersection-set-ordered set1 (cdr set2)))))))
 
 ; EX 2.61
 ; give an implementation of adjoin-set using the ordered representation. by analogy with element-of-set?, show how to take advantage of the ordering to produce
 ; a procedure that requires on the average about half as many steps as with the unordered representation
-(define (adjoin-set-ordered x set) ;;; TODO
-  (define (adjoin-set/a set< x set>)
-  ((null? set>) (append set< '(x)))
-  ((= x (car set)) set)
-  ((< x (car set)) (cons x set))
-  (else (adjoin-set-ordered
+(define (adjoin-set-ordered x set) 
+  (define (adjoin-set/a set< set>)
+    (cond
+      ((null? set>) (append (reverse set<) (list x)))
+      ((= x (car set>)) (append (reverse set<) set>))
+      ((> x (car set>)) (adjoin-set/a (cons (car set>) set<) (cdr set>)))
+      (else (append (reverse (cons x set<)) set>))))
+  (adjoin-set/a '() set))
+
+(define (adjoin-set-ordered.v2 x set)
+  (if (null? set) (list x)
+      (let ((first (car set)))
+        (cond
+          ((= x first) set)
+          ((> x first) (cons first (adjoin-set-ordered.v2 x (cdr set))))
+          ((< x first) (cons x set))))))
+
+(adjoin-set-ordered 3 '(1 2 4 5))
+(adjoin-set-ordered 3 '(1 2 3))
+(adjoin-set-ordered 3 '(1 2))
+(adjoin-set-ordered.v2 3 '(1 2 4 5))
+(adjoin-set-ordered.v2 3 '(1 2 3))
+(adjoin-set-ordered.v2 3 '(1 2))
+
+
+; EX 2.62
+; give a θ(n) implementation of union-set for sets represented as ordered lists
+(define (union-set-ordered set1 set2)
+  (cond
+    ((null? set1) set2)
+    ((null? set2) set1)
+    (else
+     (let ((x1 (car set1)) (x2 (car set2)) (rest-of-set (union-set-ordered (cdr set1) (cdr set2))))
+       (cond
+         ((= x1 x2) (cons x1 (union-set-ordered (cdr set1) (cdr set2))))
+         ((> x1 x2) (cons x2 (union-set-ordered set1 (cdr set2))))
+         ((< x1 x2) (cons x1 (union-set-ordered (cdr set1) set2))))))))
+
+(union-set-ordered '(1 2 3) '(2 3 4 5))
