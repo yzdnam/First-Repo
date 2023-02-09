@@ -1,5 +1,42 @@
 #lang sicp
 
+; Creating Local Tables:
+(define (make-local-table)
+  (let ((local-table (list '*table*)))
+    (define (lookup key-1 key-2)
+      (let ((subtable
+             (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record
+                   (assoc key-2 (cdr subtable))))
+              (if record (cdr record) false))
+            false)))
+(define (insert! key-1 key-2 value)
+  (let ((subtable
+         (assoc key-1 (cdr local-table))))
+    (if subtable
+        (let ((record
+               (assoc key-2 (cdr subtable))))
+          (if record
+              (set-cdr! record value)
+              (set-cdr! subtable
+                        (cons (cons key-2 value)
+                              (cdr subtable)))))
+        (set-cdr! local-table
+                  (cons (list key-1 (cons key-2 value))
+                        (cdr local-table)))))
+  'ok)
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc!) insert!)
+            (else (error "Unknown operation: TABLE" m))))
+    dispatch))
+
+; make-local-table can be used to implement the get and put operations used in Section 2.4.3 for data-directed-programming:
+
+(define operation-table (make-local-table))
+(define get (operation-table 'lookup-proc))
+(define put (operation-table 'insert-proc!))
 (define (sorted? lon)
   (cond ((or (null? lon) (null? (cdr lon))) #t)
         ((> (car lon) (cadr lon)) (sorted? (cdr lon)))
@@ -98,9 +135,13 @@
 (define (negate x) (apply-generic2.84 'negate x))
 (define (gen-gcd x y) (apply-generic2.84 'gcd x y))
 (define (gen-remainder x y) (apply-generic2.84 'remainder x y))
+(define (gen-map lot) (apply-generic) 'gen-map lot)
 
 (define (install-scheme-number-package)
   (define (tag x) (attach-tag 'scheme-number x))
+  (define (reduce-integers n d)
+    (let ((g (gcd n d)))
+      (list (/ n g) (/ d g))))
   (put 'add '(scheme-number scheme-number)
        (lambda (x y) (tag (+ x y))))
   (put 'sub '(scheme-number scheme-number)
@@ -129,6 +170,9 @@
        (lambda (x y) (tag (gcd x y))))
   (put 'remainder '(scheme-number scheme-number)
        (lambda (x y) (tag (remainder x y))))
+  (put 'reduce '(scheme-number scheme-number)
+       (lambda (x y) (let ((reduced-terms (reduce-integers x y)))
+                       (list (tag (car reduced-terms)) (tag (cadr reduced-terms))))))
   (put 'make 'scheme-number (lambda (x) (tag x)))
   'done)
 
@@ -140,8 +184,8 @@
   (define (numer x) (car x))
   (define (denom x) (cdr x))
   (define (make-rat n d)
-    (let ((g (gen-gcd n d)))
-      (cons (div n g) (div d g))))
+    (let ((reduced-terms (reduce n d)))
+      (cons (car reduced-terms) (cadr reduced-terms))))
   (define (add-rat x y)
     (make-rat (add (mul (numer x) (denom y))
                    (mul (numer y) (denom x)))
@@ -373,9 +417,9 @@
 (define (scheme-number->complex n)
   (make-complex-from-real-imag (contents n) 0))
 
-(put-coercion 'scheme-number
-              'complex
-              scheme-number->complex)
+(put 'scheme-number
+     'complex
+     scheme-number->complex)
 
 (define (apply-generic2.5.2 op . args)
   (let ((type-tags (map type-tag args)))
@@ -387,8 +431,8 @@
                     (type2 (cadr type-tags))
                     (a1 (car args))
                     (a2 (cadr args)))
-                (let ((t1->t2 (get-coercion type1 type2))
-                      (t2->t1 (get-coercion type2 type1)))
+                (let ((t1->t2 (get type1 type2))
+                      (t2->t1 (get type2 type1)))
                   (cond (t1->t2
                          (apply-generic2.5.2 op (t1->t2 a1) a2))
                         (t2->t1
@@ -577,6 +621,12 @@
         (make-poly (variable p1)
                    (gcd-terms (term-list p1) (term-list p2)))
         (error "Polys not in same var: GCD-POLY" (list p1 p2))))
+  (define (reduce-poly p1 p2)
+    (if (same-variable? (variable p1) (variable p2))
+        (let ((reduced-termlists (reduce (term-list p1) (term-list p2))))
+          (list (make-poly (variable p1) (car reduced-termlists))
+                (make-poly (variable p1) (cadr reduced-termlists))))
+          (error "Polys not in same var: REDUCE-POLY" (list p1 p2))))
   ;; interface to rest of the system
   (define (tag p) (attach-tag 'polynomial p))
   (put 'add '(polynomial polynomial)
@@ -597,6 +647,9 @@
        (lambda (p1 p2) (tag (gcd-poly p1 p2))))
   (put 'make 'polynomial
        (lambda (var terms) (tag (make-poly var terms))))
+  (put 'reduce '(polynomial polynomial)
+       (lambda (p1 p2) (let ((reduced-polys (reduce-poly p1 p2)))
+                         (list (tag (car reduced-polys)) (tag (cadr reduced-polys))))))
   'done)
 
 (define (make-term order coeff) (attach-tag 'term (list order coeff))) ; needs type tag for generic adjoin-term
@@ -820,17 +873,57 @@
                   (if (and (equ? (order tl1-t1) (order tl2-t1)) (equ? (coeff tl1-t1) (coeff tl2-t1)))
                       (equal-termlists? (rest-terms tl1) (rest-terms tl2))
                       #f)))))
-  (define (pseudoremainder-terms L1 L2)
+  (define (pseudoremainder-terms L1 L2) ; EX 2.96a.
     (let ((O1 (order (first-term L1))) (O2 (order (first-term L2))) (c (coeff (first-term L2))))
       (let ((i-factor (expt c (add 1 (sub O1 O2)))))
         (let ((new-L1 (mul-term-by-all-terms (make-term 0 i-factor) L1)))
           (cadr (div-terms new-L1 L2))))))
   (define (remainder-terms L1 L2)
     (cadr (div-terms L1 L2)))
-  (define (gcd-terms a b)
+  
+  (define (gcd-terms a b) ; EX 2.96b.
     (if (empty-termlist? b)
-        a
+        (let ((unsimplified-coeffs (map-to-terms coeff a)))
+          (let ((unsimp-coeffs-wo-0s (remove-0s-from-list unsimplified-coeffs)))
+            (if (equal? (length unsimp-coeffs-wo-0s) 1)
+                a
+                (let ((coeffs-gcd (gcd-list unsimp-coeffs-wo-0s)))
+                  (simplify-terms a coeffs-gcd)))))
         (gcd-terms b (pseudoremainder-terms a b))))
+  
+  (define (map-to-terms proc terms)
+    (if (empty-termlist? terms)
+        '()
+        (cons (proc (first-term terms)) (map-to-terms (rest-terms terms)))))
+  (define (remove-0s-from-list lst)
+    (cond ((null? lst) lst)
+          ((=zero? (car lst)) (remove-0s-from-list (cdr lst)))
+          (else (cons (car lst) (remove-0s-from-list (cdr lst))))))
+  (define (coeffs-of-terms-wo-0s terms)
+    (remove-0s-from-list (map-to-terms coeff terms)))
+  
+  (define (gcd-list lot)
+    (let ((first-2-terms-gcd (gcd (car lot) (cadr lot))))
+      (if (null? (cddr lot))
+          first-2-terms-gcd
+          (gcd-list first-2-terms-gcd (cddr lot)))))
+  
+  (define (simplify-terms L terms-gcd)
+    (if (empty-termlist? L)
+        L
+        (let ((t1 (first-term L)))
+          (adjoin-term (make-term (order t1) (div (coeff t1) terms-gcd))
+                       (simplify-terms (rest-terms L terms-gcd))))))
+
+  (define (reduce-terms n d) ; EX 2.97a.
+    (let ((nd-gcd (gcd-terms n d)))
+      (let ((lead-gcd (first-term (nd-gcd))))
+        (let ((i-factor (expt (coeff lead-gcd) (add 1 (sub (max (order (first-term n)) (order (first-term d))) (order lead-gcd))))))
+          (let ((i-factor-term (make-term 0 i-factor)))
+            (let ((n-to-be-div (mul-term-by-all-terms (make-term 0 i-factor) n)) (d-to-be-div (mul-term-by-all-terms (make-term 0 i-factor) d)))
+              (let ((unsimplified-nn (div n-to-be-div nd-gcd)) (unsimplified-dd (div d-to-be-div nd-gcd)))
+                (let ((nn-dd-gcd (gcd-list (append (gcd-list (coeff-of-terms-wo-0s unsimplified-nn)) (gcd-list (coeff-of-terms-wo-0s unsimplified-dd))))))
+                  (list (simplify-terms unsimplified-nn nn-dd-gcd) (simplify-terms unsimplified-dd nn-dd-gcd))))))))))
   ; interface to rest of system
   (define (tag x) (attach-tag 'termlist x))
   (put 'adjoin-term '(term termlist)
@@ -858,7 +951,9 @@
        (lambda (L1 L2) (equal-termlists? L1 L2)))
   (put 'gcd '(termlist termlist)
        (lambda (L1 L2) (tag (gcd-terms L1 L2))))
-  'done)
+  (put 'reduce '(termlist termlist)
+       (lambda (L1 L2) (tag (reduce-terms L1 L2)))
+  'done) 
 
 (define (make-dense-termlist terms)
   ((get 'make-dense-termlist 'termlist) terms))
@@ -867,7 +962,8 @@
 (define (add-terms L1 L2) (apply-generic 'add-terms L1 L2))
 (define (sub-terms L1 L2) (apply-generic 'sub-terms L1 L2))
 (define (mul-terms L1 L2) (apply-generic 'mul-terms L1 L2))
-(define (div-terms L1 L2 (apply-generic 'div-terms L1 L2)))
+(define (div-terms L1 L2) (apply-generic 'div-terms L1 L2)))
+(define (reduce L1 L2) (apply-generic 'reduce L1 L2))
 
 ; EX 2.91
 ; implement div-poly. see text for explanation of algorithm and implementation instructions
@@ -960,5 +1056,11 @@
 ; EX 2.96
 ; a) implement pseudoremainder-terms which is just like remainder-terms except that it multiplies the dividend by the integerizing factor before calling div-terms
 ; modify gcd-terms to use pseudoremainder-terms.
-; b) modify gcd-terms so that it removes common factors from the coefficients of the answer by dividing all the coefficients by their gcd
+; b) modify gcd-terms so that it removes common factors from the coefficients of the answer by dividing all the coefficients
+; by their gcd
 ; see above
+
+; EX 2.97
+; implement the reduce-terms algorithm that takes two termlists, n and d, and returns the list nn, dd which are n and d reduced to lowest terms. then write reduce-poly, analogous to
+; add-poly, that checks to see if the two polys have the same variable. if so, reduce-poly strips off the variable and passes the problem to reduce-terms, then reattaches the variable
+; to the two term lists supplied by reduce terms
