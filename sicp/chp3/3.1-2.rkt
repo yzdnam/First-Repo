@@ -230,7 +230,7 @@
 (define (unit-circle-predicate x y)
   (>= 1 (+ (square (- x 1)) (square (- y 1)))))
 
-; (estimate-integral unit-circle-predicate 0.0 5.0 0.0 5.0 1000000)
+ (estimate-integral unit-circle-predicate 0.0 5.0 0.0 5.0 1000000)
 
 ; EX 3.6
 ; design a new rand procedure that, when called with the symbol 'generate, produces a new random number, and when called with the symbol 'reset, returns a procedure that sets the
