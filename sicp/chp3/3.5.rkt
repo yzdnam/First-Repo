@@ -688,5 +688,19 @@
   (let ((boundary-area (* (- x2 x1) (- y2 y1))))
     (stream-map3.50 (lambda (p) (* boundary-area p)) (monte-carlo (experiment-stream) 0 0))))
 
-(display-stream (estimate-integral3.82 unit-circle-predicate 0.0 2.0 0.0 2.0))
+;(display-stream (estimate-integral3.82 unit-circle-predicate 0.0 2.0 0.0 2.0))
 ; Good. estimates become more accurate as the predicate's area becomes a larger proportion of the boundary area
+
+(define (solve0 f y0 dt)
+  (let ((y '*unassigned*)
+        (dy '*unassigned*))
+    (let ((a (integral3.77 (delay dy) y0 dt))
+          (b (stream-map f y)))
+      (set! y a)
+      (set! dy b)
+      y)))
+
+;(stream-ref (solve0 (lambda (y) y)
+;                   1
+;                   0.001)
+;            1000)
