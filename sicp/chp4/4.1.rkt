@@ -576,6 +576,16 @@
                  first
                  (expand-or-args rest)))))
 
+; unless as derived expression
+(define (unless? exp) (tagged-list? exp 'unless))
+(define (unless-args exp) (cdr exp))
+
+;(define (unless condition usual-value exceptional-value)
+;  (if condition exceptional-value usual-value))
+
+(define (unless->if exp)
+  (make-if (cadr exp) (cadddr exp) (caddr exp)))
+
 ; EX 4.5
 ; modify the handling of cond so it supports an additional syntax of (<test> => <recipient>) where if <test> evaluates to a true value, then <recipient>, which must be a procedure
 ; of one argument, is invoked on the value of <test>
