@@ -3,15 +3,81 @@
 (define (require p) (if (not p) (amb)))
 
 (define (an-element-of items)
-(require (not (null? items)))
-(amb (car items) (an-element-of (cdr items))))
+  (require (not (null? items)))
+  (amb (car items) (an-element-of (cdr items))))
+
+;(define (prime-sum-pair list1 list2)
+;  (let ((a (an-element-of list1))
+;        (b (an-element-of list2)))
+;    (require (prime? (+ a b)))
+;    (list a b)))
 
 (define (an-integer-starting-from n)
-(amb n (an-integer-starting-from (+ n 1))))
+  (amb n (an-integer-starting-from (+ n 1))))
 
 ; EX 4.35
 ; Write a procedure an-integer-between that returns an integer between two given bounds.
 (define (an-integer-between low high)
+  (require (<= low high))
+  (amb low (an-integer-between (+ low 1) high)))
+
+(define (a-pythagorean-triple-between low high)
+  (let ((i (an-integer-between low high)))
+    (let ((j (an-integer-between i high)))
+      (let ((k (an-integer-between j high)))
+        (require (= (+ (* i i) (* j j)) (* k k)))
+        (list i j k)))))
+
+; EX 4.36
+; Explain why simply replacing an-integer-between by an-integer-starting-from in the procedure in Exercise 4.35 is not an
+; adequate way to generate arbitrary Pythagorean triples.
+
+; This would not be adequate because k would increase indefinitely after each try-again attempt. i and j would never increment
+; because k would never reach the end of its alternative values.
+
+; Write a procedure for which repeatedly typing try-again would in principle eventually generate all Pythagorean triples
+(define (py-triple)
+  (let ((k (an-integer-starting-from 1)))
+    (let ((i (an-integer-between 1 k)))
+      (let ((j (an-integer-between i k)))
+        (require (= (+ (* i i) (* j j)) (* k k)))
+        (list i j k)))))
+
+; EX 4.37
+; compare the efficiency of the following procedure with its
+; version in EX 4.35
+(define (a-pythagorean-triple-between4.37 low high)
+  (let ((i (an-integer-between low high))
+        (hsq (* high high)))
+    (let ((j (an-integer-between i high)))
+      (let ((ksq (+ (* i i) (* j j))))
+        (require (>= hsq ksq))
+        (let ((k (sqrt ksq)))
+          (require (integer? k))
+          (list i j k))))))
+
+(define (distinct? items)
+  (cond ((null? items) true)
+        ((null? (cdr items)) true)
+        ((member (car items) (cdr items)) false)
+        (else (distinct? (cdr items)))))
+
+(define (multiple-dwelling)
+  (let ((baker (amb 1 2 3 4 5)) (cooper (amb 1 2 3 4 5))
+                                (fletcher (amb 1 2 3 4 5)) (miller (amb 1 2 3 4 5))
+                                (smith (amb 1 2 3 4 5)))
+    (require
+      (distinct? (list baker cooper fletcher miller smith)))
+    (require (not (= baker 5)))
+    (require (not (= cooper 1)))
+    (require (not (= fletcher 5)))
+    (require (not (= fletcher 1)))
+    (require (> miller cooper))
+    (require (not (= (abs (- smith fletcher)) 1)))
+    (require (not (= (abs (- fletcher cooper)) 1)))
+    (list (list 'baker baker) (list 'cooper cooper)
+          (list 'fletcher fletcher) (list 'miller miller)
+          (list 'smith smith)))) 
 
 (define (list-of-values exps env)
   (if (no-operands? exps)
