@@ -1,5 +1,18 @@
 #lang sicp
 
+(define (require p) (if (not p) (amb)))
+
+(define (an-element-of items)
+(require (not (null? items)))
+(amb (car items) (an-element-of (cdr items))))
+
+(define (an-integer-starting-from n)
+(amb n (an-integer-starting-from (+ n 1))))
+
+; EX 4.35
+; Write a procedure an-integer-between that returns an integer between two given bounds.
+(define (an-integer-between low high)
+
 (define (list-of-values exps env)
   (if (no-operands? exps)
       '()
@@ -7,7 +20,7 @@
             (list-of-values (rest-operands exps) env))))
 
 (define (eval-if exp env)
-  (if (true? (actual-value (if-predicate exp) env))
+  (if (true? (eval (if-predicate exp) env))
       (eval (if-consequent exp) env)
       (eval (if-alternative exp) env)))
 
@@ -15,7 +28,6 @@
   (cond ((last-exp? exps)
          (eval (first-exp exps) env))
         (else
-        ; (actual-value (first-exp exps) env)
          (eval (first-exp exps) env)
          (eval-sequence (rest-exps exps) env))))
 
@@ -235,9 +247,6 @@
         (list 'eq? eq?)
         ;(list 'for-each for-each)
         (list 'make-vector make-vector)
-        (list 'newline newline)
-        (list 'display display)
-        (list 'runtime runtime)
         (list '= =)
         (list '< <)
         (list '> >)
@@ -264,104 +273,10 @@
     initial-env))
 (define the-global-environment (setup-environment))
 
-(define (delay-it exp env)
-  (list 'thunk exp env))
-(define (thunk? obj)
-  (tagged-list? obj 'thunk))
-(define (thunk-exp thunk) (cadr thunk))
-(define (thunk-env thunk) (caddr thunk))
-
-(define (evaluated-thunk? obj)
-  (tagged-list? obj 'evaluated-thunk))
-(define (thunk-value evaluated-thunk)
-  (cadr evaluated-thunk))
-
-(define (force-it obj)
-  ; with memoization
-  (cond ((thunk? obj)
-        (if (eq? (thunk-exp obj) 'runtime)
-             (actual-value (thunk-exp obj) (thunk-env obj))
-             (let ((result (actual-value (thunk-exp obj)
-                                         (thunk-env obj))))
-               (set-car! obj 'evaluated-thunk)
-               (set-car! (cdr obj)
-                         result)     ; replace exp with its value
-               (set-cdr! (cdr obj)
-                         '())        ; forget uneeded env
-               result)))
-        ((evaluated-thunk? obj) (thunk-value obj))
-        (else obj))
-  ; without memoization
-;  (if (thunk? obj)
-;      (actual-value (thunk-exp obj) (thunk-env obj))
-;      obj)
-  )
-
-(define (actual-value exp env)
-  (force-it (eval exp env)))
-
-(define (eval exp env)
-  (cond ((self-evaluating? exp) exp)
-        ((variable? exp) (lookup-variable-value exp env))
-        ((quoted? exp) (text-of-quotation exp))
-        ((assignment? exp) (eval-assignment exp env))
-        ((definition? exp) (eval-definition exp env))
-        ((if? exp) (eval-if exp env))
-        ((lambda? exp) (make-procedure (lambda-parameters exp)
-                                       (lambda-body exp)
-                                       env))
-        ((begin? exp)
-         (eval-sequence (begin-actions exp) env))
-        ((cond? exp) (eval (cond->if exp) env))
-        ((let? exp) (eval (let->combination exp) env))
-        ((application? exp)
-         (mc-apply (actual-value (operator exp) env)
-                   (operands exp) env))
-        (else
-         (error "Unknown expression type: EVAL" exp))))
-
-(define (list-of-arg-values exps env)
-  (if (no-operands? exps)
-      '()
-      (cons (actual-value (first-operand exps)
-                          env)
-            (list-of-arg-values (rest-operands exps)
-                                env))))
-(define (list-of-delayed-args exps env)
-  (if (no-operands? exps)
-      '()
-      (if (equal? (first-operand exps) '(runtime))
-          (cons (actual-value (first-operand exps) env)
-                (list-of-delayed-args (rest-operands exps) env))
-          (cons (delay-it (first-operand exps)
-                          env)
-                (list-of-delayed-args (rest-operands exps)
-                                      env)))))
-
-(define (mc-apply procedure arguments env)
-  (cond ((primitive-procedure? procedure)
-         (apply-primitive-procedure
-          procedure
-          (list-of-arg-values arguments env)))
-        ((compound-procedure? procedure)
-         (eval-sequence
-          (procedure-body procedure)
-          (extend-environment
-           (procedure-parameters procedure)
-           (list-of-delayed-args arguments env) ; TODO for ex4.31: modify list-of-arg-values and list-of-delayed args to be able to work with a list of parameters made up of
-                                                ; both pairs and symbols, if the parameter is a pair, evaluate the 2nd member of the pair to determine whether it is
-                                                ; a lazy or lazy-memo identifier. once identified, call the appropriate function on the arg. then create two types of
-                                                ; thunks. memoized and non-memoized. this will allow force-it to run the appropriate procedures on the expression.
-           ; NOTE: ex4.31 made in separate file
-           (procedure-environment procedure))))
-        (else
-         (error
-          "Unknown procedure type: APPLY" procedure))))
-
-
 (define (primitive-procedure? proc)
   (tagged-list? proc 'primitive))
 (define (primitive-implementation proc) (cadr proc))
+
 
 (define apply-in-underlying-scheme apply)
 
@@ -369,14 +284,12 @@
   (apply-in-underlying-scheme
    (primitive-implementation proc) args))
 
-(define input-prompt ";;; L-Eval input:")
-(define output-prompt ";;; L-Eval value:")
+(define input-prompt ";;; M-Eval input:")
+(define output-prompt ";;; M-Eval value:")
 (define (driver-loop)
   (prompt-for-input input-prompt)
   (let ((input (read)))
-    (let ((output
-           (actual-value
-            input the-global-environment)))
+    (let ((output (eval input the-global-environment)))
       (announce-output output-prompt)
       (user-print output)))
   (driver-loop))
@@ -394,45 +307,87 @@
                      '<procedure-env>))
       (display object)))
 
-; EX 4.28:
-; eval uses actual-value rather than eval to evaluate the operator before passing it to apply, in order to force
-; the value of the operator. Give an example that demonstrates the need for this forcing.
+(define (eval exp env) ((analyze exp) env))
 
-; a general example that demonstrates this need is when the operator of a procedure application is a compound
-; procedure with a procedure application as an argument that is assigned to a variable. the enclosing procedure will evaluate
-; but delay the evaluation of the argument until the variable is called. if the variable were to be applied to an argument with
-; the interpreter applying eval to the variable, the lookup procedure would return a thunk and the interpreter would return an
-; error.
+(define (analyze exp)
+  (cond ((self-evaluating? exp) (analyze-self-evaluating exp))
+        ((quoted? exp) (analyze-quoted exp))
+        ((variable? exp) (analyze-variable exp))
+        ((assignment? exp) (analyze-assignment exp))
+        ((definition? exp) (analyze-definition exp))
+        ((if? exp) (analyze-if exp))
+        ((lambda? exp) (analyze-lambda exp))
+        ((begin? exp) (analyze-sequence (begin-actions exp)))
+        ((cond? exp) (analyze (cond->if exp)))
+        ((let? exp) (analyze (let->combination exp)))
+        ((application? exp) (analyze-application exp))
+        (else (error "Unknown expression type: ANALYZE" exp))))
 
-; EX 4.29
-; a program that would run much more slowly without memoization than with memoization would be one that would increment its
-; argument before each recursive call and accumulate all prior calls during each call.
-(define (helper y x)
-  (let ((y+1 (+ y 1)))
-    (if (eq? y x) y (+ (ex4.29 (- x 1)) (helper y+1 x)))))
+(define (analyze-self-evaluating exp)
+  (lambda (env) exp))
 
-(define (ex4.29 x)
-  (helper 0 x))
-  
-(define (test n)
-  (newline)
-  (display n)
-  (start-ex4.29-test n (runtime)))
-(define (start-ex4.29-test n start-time)
-  (begin (ex4.29 n)
-         (report-ex4.29 (- (runtime) start-time))))
-(define (report-ex4.29 elapsed-time)
-  (display " *** ")  (display elapsed-time))
+(define (analyze-quoted exp)
+  (let ((qval (text-of-quotation exp)))
+    (lambda (env) qval)))
 
-(define (square x) (* x x))
-(define count 0)
-(define (id x) (set! count (+ count 1)) x)
+(define (analyze-variable exp)
+  (lambda (env) (lookup-variable-value exp env)))
 
-(define (p1 x)
-  (set! x (cons x '(2)))
-  x)
-(define (p2 x)
-  (define (p e)
-    e
-    x)
-  (p (set! x (cons x '(2)))))
+(define (analyze-assignment exp)
+  (let ((var (assignment-variable exp))
+        (vproc (analyze (assignment-value exp))))
+    (lambda (env)
+      (set-variable-value! var (vproc env) env)
+      'ok)))
+(define (analyze-definition exp)
+  (let ((var (definition-variable exp))
+        (vproc (analyze (definition-value exp))))
+    (lambda (env)
+      (define-variable! var (vproc env) env)
+      'ok)))
+
+(define (analyze-if exp)
+  (let ((pproc (analyze (if-predicate exp)))
+        (cproc (analyze (if-consequent exp)))
+        (aproc (analyze (if-alternative exp))))
+    (lambda (env) (if (true? (pproc env))
+                      (cproc env)
+                      (aproc env)))))
+
+(define (analyze-lambda exp)
+  (let ((vars (lambda-parameters exp))
+        (bproc (analyze-sequence (lambda-body exp))))
+    (lambda (env) (make-procedure vars bproc env))))
+
+(define (analyze-sequence exps)
+  (define (sequentially proc1 proc2)
+    (lambda (env) (proc1 env) (proc2 env)))
+  (define (loop first-proc rest-procs)
+    (if (null? rest-procs)
+        first-proc
+        (loop (sequentially first-proc (car rest-procs))
+              (cdr rest-procs))))
+  (let ((procs (map analyze exps)))
+    (if (null? procs) (error "Empty sequence: ANALYZE"))
+    (loop (car procs) (cdr procs))))
+
+(define (analyze-application exp)
+  (let ((fproc (analyze (operator exp)))
+        (aprocs (map analyze (operands exp))))
+    (lambda (env)
+      (execute-application
+       (fproc env)
+       (map (lambda (aproc) (aproc env))
+            aprocs)))))
+(define (execute-application proc args)
+  (cond ((primitive-procedure? proc)
+         (apply-primitive-procedure proc args))
+        ((compound-procedure? proc)
+         ((procedure-body proc)
+          (extend-environment
+           (procedure-parameters proc)
+           args
+           (procedure-environment proc))))
+        (else
+         (error "Unknown procedure type: EXECUTE-APPLICATION"
+                proc))))

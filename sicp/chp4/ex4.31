@@ -165,6 +165,7 @@
 (define (compound-procedure? p)
   (tagged-list? p 'procedure))
 (define (procedure-parameters p) (cadr p))
+(define (procedure-parameters-wo-tags p) (map (lambda (x) (if (pair? x) (car x) x)) (cadr p)))
 (define (procedure-body p) (caddr p))
 (define (procedure-environment p) (cadddr p))
 
@@ -264,8 +265,12 @@
     initial-env))
 (define the-global-environment (setup-environment))
 
-(define (delay-it exp env)
-  (list 'thunk exp env))
+(define (delay-it exp type env)
+  (if (eq? type 'lazy-memo)
+  (list 'memo-thunk exp env)
+  (list 'thunk exp env)))
+(define (memo-thunk? obj)
+  (tagged-list? obj 'memo-thunk))
 (define (thunk? obj)
   (tagged-list? obj 'thunk))
 (define (thunk-exp thunk) (cadr thunk))
@@ -278,24 +283,20 @@
 
 (define (force-it obj)
   ; with memoization
-  (cond ((thunk? obj)
-        (if (eq? (thunk-exp obj) 'runtime)
-             (actual-value (thunk-exp obj) (thunk-env obj))
-             (let ((result (actual-value (thunk-exp obj)
-                                         (thunk-env obj))))
-               (set-car! obj 'evaluated-thunk)
-               (set-car! (cdr obj)
-                         result)     ; replace exp with its value
-               (set-cdr! (cdr obj)
-                         '())        ; forget uneeded env
-               result)))
+  (cond 
+        ((memo-thunk? obj)
+         (let ((result (actual-value (thunk-exp obj)
+                                     (thunk-env obj))))
+           (set-car! obj 'evaluated-thunk)
+           (set-car! (cdr obj)
+                     result)     ; replace exp with its value
+           (set-cdr! (cdr obj)
+                     '())        ; forget uneeded env
+           result))
+        ((thunk? obj)
+         (actual-value (thunk-exp obj) (thunk-env obj)))
         ((evaluated-thunk? obj) (thunk-value obj))
-        (else obj))
-  ; without memoization
-;  (if (thunk? obj)
-;      (actual-value (thunk-exp obj) (thunk-env obj))
-;      obj)
-  )
+        (else obj)))
 
 (define (actual-value exp env)
   (force-it (eval exp env)))
@@ -320,6 +321,10 @@
         (else
          (error "Unknown expression type: EVAL" exp))))
 
+(define (mod-arg? arg) (pair? arg))
+(define (arg-type mod-arg) (cadr mod-arg))
+(define (arg-exp mod-arg) (caar mod-arg))
+
 (define (list-of-arg-values exps env)
   (if (no-operands? exps)
       '()
@@ -327,15 +332,16 @@
                           env)
             (list-of-arg-values (rest-operands exps)
                                 env))))
-(define (list-of-delayed-args exps env)
+(define (list-of-delayed-args exps params env)
   (if (no-operands? exps)
       '()
       (if (equal? (first-operand exps) '(runtime))
           (cons (actual-value (first-operand exps) env)
                 (list-of-delayed-args (rest-operands exps) env))
-          (cons (delay-it (first-operand exps)
-                          env)
-                (list-of-delayed-args (rest-operands exps)
+          (cons (if (mod-arg? (car params))
+                    (delay-it (first-operand exps) (arg-type (car params)) env)
+                    (actual-value (first-operand exps) env))
+                (list-of-delayed-args (rest-operands exps) (cdr params)
                                       env)))))
 
 (define (mc-apply procedure arguments env)
@@ -347,12 +353,12 @@
          (eval-sequence
           (procedure-body procedure)
           (extend-environment
-           (procedure-parameters procedure)
-           (list-of-delayed-args arguments env) ; TODO for ex4.31: modify list-of-arg-values and list-of-delayed args to be able to work with a list of parameters made up of
+           (procedure-parameters-wo-tags procedure)
+           (list-of-delayed-args arguments (procedure-parameters procedure) env)
+           ; TODO for ex4.31: modify list-of-arg-values and list-of-delayed args to be able to work with a list of parameters made up of
                                                 ; both pairs and symbols, if the parameter is a pair, evaluate the 2nd member of the pair to determine whether it is
                                                 ; a lazy or lazy-memo identifier. once identified, call the appropriate function on the arg. then create two types of
                                                 ; thunks. memoized and non-memoized. this will allow force-it to run the appropriate procedures on the expression.
-           ; NOTE: ex4.31 made in separate file
            (procedure-environment procedure))))
         (else
          (error

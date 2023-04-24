@@ -15,8 +15,8 @@
   (cond ((last-exp? exps)
          (eval (first-exp exps) env))
         (else
-        ; (actual-value (first-exp exps) env)
-         (eval (first-exp exps) env)
+         (actual-value (first-exp exps) env)
+        ; (eval (first-exp exps) env)
          (eval-sequence (rest-exps exps) env))))
 
 (define (eval-assignment exp env)
@@ -160,6 +160,8 @@
 (define (true? x) (not (eq? x false)))
 (define (false? x) (eq? x false))
 
+(define (procedure? p)
+  (or (compound-procedure? p) (primitive-procedure? p)))
 (define (make-procedure parameters body env)
   (list 'procedure parameters body env))
 (define (compound-procedure? p)
@@ -225,9 +227,9 @@
     (scan (frame-variables frame) (frame-values frame))))
 
 (define primitive-procedures
-  (list (list 'car car)
-        (list 'cdr cdr)
-        (list 'cons cons)
+  (list ;(list 'car car)
+        ;(list 'cdr cdr)
+        ;(list 'cons cons)
         (list 'null? null?)
         (list 'list list)
         ;(list 'map map) primitive procedures cannot accept procedures as arguments. see EX 4.14, line 690 for attempted
@@ -252,7 +254,6 @@
 (define (primitive-procedure-objects)
   (map (lambda (proc) (list 'primitive (cadr proc)))
        primitive-procedures))
-
 
 (define (setup-environment)
   (let ((initial-env
@@ -279,7 +280,7 @@
 (define (force-it obj)
   ; with memoization
   (cond ((thunk? obj)
-        (if (eq? (thunk-exp obj) 'runtime)
+         (if (eq? (thunk-exp obj) 'runtime)
              (actual-value (thunk-exp obj) (thunk-env obj))
              (let ((result (actual-value (thunk-exp obj)
                                          (thunk-env obj))))
@@ -292,18 +293,31 @@
         ((evaluated-thunk? obj) (thunk-value obj))
         (else obj))
   ; without memoization
-;  (if (thunk? obj)
-;      (actual-value (thunk-exp obj) (thunk-env obj))
-;      obj)
+  ;  (if (thunk? obj)
+  ;      (actual-value (thunk-exp obj) (thunk-env obj))
+  ;      obj)
   )
 
 (define (actual-value exp env)
   (force-it (eval exp env)))
 
+(define (create-lazy-pair exp)
+  (if (null? (cdr exp))
+      `(cons ',(car exp) '())
+      `(cons ',(car exp) ,(create-lazy-pair (cdr exp)))))
+
+(define (lazy-pair? exp)
+  (tagged-list? exp 'lazy-pair))
+
+(define (lazy-pair-contents exp)
+  (cadr exp))
+
 (define (eval exp env)
   (cond ((self-evaluating? exp) exp)
         ((variable? exp) (lookup-variable-value exp env))
-        ((quoted? exp) (text-of-quotation exp))
+        ((quoted? exp) (if (pair? (text-of-quotation exp))
+                           (eval (create-lazy-pair (text-of-quotation exp)) env)
+                           (text-of-quotation exp)))
         ((assignment? exp) (eval-assignment exp env))
         ((definition? exp) (eval-definition exp env))
         ((if? exp) (eval-if exp env))
@@ -330,13 +344,16 @@
 (define (list-of-delayed-args exps env)
   (if (no-operands? exps)
       '()
-      (if (equal? (first-operand exps) '(runtime))
-          (cons (actual-value (first-operand exps) env)
-                (list-of-delayed-args (rest-operands exps) env))
-          (cons (delay-it (first-operand exps)
-                          env)
-                (list-of-delayed-args (rest-operands exps)
-                                      env)))))
+      (if
+       ;(or
+       (equal? (first-operand exps) '(runtime))
+       ;       (and (pair? (first-operand exps)) (not (procedure? (car (first-operand exps))))))
+       (cons (actual-value (first-operand exps) env)
+             (list-of-delayed-args (rest-operands exps) env))
+       (cons (delay-it (first-operand exps)
+                       env)
+             (list-of-delayed-args (rest-operands exps)
+                                   env)))))
 
 (define (mc-apply procedure arguments env)
   (cond ((primitive-procedure? procedure)
@@ -348,12 +365,10 @@
           (procedure-body procedure)
           (extend-environment
            (procedure-parameters procedure)
-           (list-of-delayed-args arguments env) ; TODO for ex4.31: modify list-of-arg-values and list-of-delayed args to be able to work with a list of parameters made up of
-                                                ; both pairs and symbols, if the parameter is a pair, evaluate the 2nd member of the pair to determine whether it is
-                                                ; a lazy or lazy-memo identifier. once identified, call the appropriate function on the arg. then create two types of
-                                                ; thunks. memoized and non-memoized. this will allow force-it to run the appropriate procedures on the expression.
-           ; NOTE: ex4.31 made in separate file
+           (list-of-delayed-args arguments env) 
            (procedure-environment procedure))))
+        ((lazy-pair? procedure)
+         (mc-apply (lazy-pair-contents procedure) arguments env))
         (else
          (error
           "Unknown procedure type: APPLY" procedure))))
@@ -387,12 +402,20 @@
   (newline) (display string) (newline))
 
 (define (user-print object)
-  (if (compound-procedure? object)
-      (display (list 'compound-procedure
-                     (procedure-parameters object)
-                     (procedure-body object)
-                     '<procedure-env>))
-      (display object)))
+  (cond
+    ((compound-procedure? object)
+     (display (list 'compound-procedure
+                    (procedure-parameters object)
+                    (procedure-body object)
+                    '<procedure-env>)))
+    ((lazy-pair? object)
+     (display (cons
+              (cadar (frame-values (first-frame (procedure-environment
+                        (lazy-pair-contents object)))))
+              '<rest-of-lazy-list>)))
+      (else (display object))))
+
+;cdadar
 
 ; EX 4.28:
 ; eval uses actual-value rather than eval to evaluate the operator before passing it to apply, in order to force
@@ -436,3 +459,7 @@
     e
     x)
   (p (set! x (cons x '(2)))))
+
+;(define (cons x y) (list 'lazy-pair (lambda (m) (m x y))))
+;(define (car z) (z (lambda (p q) p)))
+;(define (cdr z) (z (lambda (p q) (if (null? q) q (list 'lazy-pair q)))))
