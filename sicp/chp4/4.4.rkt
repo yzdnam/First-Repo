@@ -241,26 +241,45 @@
 ;;; TODO fix match-if-compatible
 ;;; test query is: (and (lives-near ?x (Bitdiddle Ben)) (job ?x ?j)))
 (define (match-if-compatible f1 f2 result-frame)
-  (cond ((and (null? f1) (null? f2)) (singleton-stream result-frame))
+  (cond ((equal? result-frame 'failed) the-empty-stream)
+        ((and (null? f1) (null? f2)) (singleton-stream result-frame))
         ((null? f1) (singleton-stream (combine-frame f2 result-frame)))
         ((null? f2) (singleton-stream (combine-frame f1 result-frame)))
         (else
          (let ((first-bind (first-binding f1)))
            (let ((first-attempt (binding-in-frame (binding-variable first-bind) f2)))
              (if (equal? first-attempt first-bind)
-                 (match-if-compatible (rest-bindings f1) (remove first-bind f2) (extend (binding-variable first-bind) (binding-value first-bind) result-frame))
+                 (match-if-compatible (rest-bindings f1) (remove first-bind f2)
+                                      (extend (binding-variable first-bind) (binding-value first-bind) result-frame))
                  (if first-attempt
                      (cond
                        ((var? (binding-value first-bind))
-                        (match-if-compatible (rest-bindings f1) f2 (extend-if-possible (binding-value first-bind) (binding-value first-attempt) result-frame)))
+                        (match-if-compatible (rest-bindings f1) (remove first-attempt f2)
+                                             (extend-if-poss-and-consistent
+                                              (binding-variable first-bind) (binding-value first-bind) (binding-value first-attempt) result-frame)))
                        ((var? (binding-value first-attempt))
-                        (match-if-compatible f1 (remove first-attempt f2) (extend-if-possible (binding-value first-attempt) (binding-value first-bind) result-frame)))
+                        (match-if-compatible (rest-bindings f1) (remove first-attempt f2)
+                                             (extend-if-poss-and-consistent
+                                              (binding-variable first-attempt) (binding-value first-attempt) (binding-value first-bind) result-frame)))
                        (else the-empty-stream))
-                       (match-if-compatible (rest-bindings f1) f2 (extend (binding-variable first-bind) (binding-value first-bind) result-frame)))))))))
+                     (match-if-compatible (rest-bindings f1) f2
+                                          (extend (binding-variable first-bind) (binding-value first-bind) result-frame)))))))))
 (define (combine-frame f1 result-frame)
   (if (null? f1) result-frame
       (let ((first-bind (first-binding f1)))
         (combine-frame (rest-bindings f1) (extend (binding-variable first-bind) (binding-value first-bind) result-frame)))))
+(define (extend-if-poss-and-consistent
+         first-var first-val other-val frame)
+  (let ((binding (binding-in-frame first-val frame)))
+    (if binding
+        (let ((new-val (binding-value binding)))
+          (cond ((var? other-val)
+                 (extend-if-poss-and-consistent
+                  first-var other-val new-val frame))
+                ((equal? new-val other-val)
+                 (extend first-var new-val frame))
+                (else 'failed)))
+        'failed)))
 (put 'and 'qeval conjoin)
 
 (define (disjoin disjuncts frame-stream)
@@ -605,7 +624,12 @@
 (define (binding-variable binding) (car binding))
 (define (binding-value binding) (cdr binding))
 (define (binding-in-frame variable frame)
-  (assoc variable frame))
+  (if (or (null? frame) (null? (first-binding frame))) #f
+        (let ((first (first-binding frame)))
+          (if (equal? variable (binding-variable first))
+              first
+              (binding-in-frame variable (rest-bindings frame))))))
+;  (assoc variable frame))
 (define (extend variable value frame)
   (cons (make-binding variable value) frame))
 (define (remove-from-frame binding frame)
@@ -677,7 +701,13 @@
      (can-do-job (administration secretary)
                  (administration big wheel)))))
 initialize-database
+(define frames1 (qeval '(lives-near (? x) (Bitdiddle Ben)) (singleton-stream '())))
+(define frames2 (qeval '(job (? x) (? j)) (singleton-stream '())))
 (define frame1 (stream-car (qeval '(lives-near (? x) (Bitdiddle Ben)) (singleton-stream '()))))
 (define frame2 (stream-car (qeval '(job (? x) (? j)) (singleton-stream '()))))
 (match-frames (qeval '(supervisor (? u) (? s)) (singleton-stream '())) (qeval '(job (? s) (computer (? j))) (singleton-stream '())))
+(define test-frame (stream-car (match-frames (qeval '(supervisor (? u) (? s)) (singleton-stream '()))
+                                                         (qeval '(job (? s) (computer (? j))) (singleton-stream '())))))
+
 (define test-rule (stream-car (fetch-rules '(wheel (? x)) (singleton-stream '()))))
+(match-frames frames1 frames2)
