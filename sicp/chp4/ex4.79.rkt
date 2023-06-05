@@ -175,7 +175,7 @@
                  frame
                  (lambda (v f)
                    (contract-question-mark v))))
-             (qeval q (singleton-stream '()))))
+             (qeval q (singleton-stream '()) the-empty-environment)))
            (query-driver-loop)))))
 
 (define (instantiate exp frame unbound-var-handler)
@@ -190,169 +190,65 @@
           (else exp)))
   (copy exp))
 
-(define (qeval query frame-stream)
+(define (qeval query frame-stream env)
   (let ((qproc (get (type query) 'qeval)))
     (if qproc
-        (qproc (contents query) frame-stream)
-        (simple-query query frame-stream))))
+        (qproc (contents query) frame-stream env)
+        (simple-query query frame-stream env))))
 
-(define (simple-query query-pattern frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (stream-append-delayed
-   ;  (stream-append
-      (find-assertions query-pattern frame)
-      (delay
-        (apply-rules query-pattern frame))
-   ))
-   frame-stream))
+(define (simple-query query-pattern frame-stream env)
+  (let ((new-frame-stream (stream-flatmap
+                           (lambda (frame)
+                             (stream-append-delayed
+                              (find-assertions query-pattern frame)
+                              (delay
+                                (apply-rules query-pattern frame env))
+                              ))
+                           frame-stream)))
+    (cons new-frame-stream env)))
 
-(define (conjoin conjuncts frame-stream)
-  (if (any-filters?
-             conjuncts)
-      (conjoin-w-filter conjuncts frame-stream)
-      (conjoin4.76 conjuncts frame-stream)))
-
-(define (conjoin-w-filter conjuncts frame-stream)
+(define (conjoin conjuncts frame-stream env)
   (if (empty-conjunction? conjuncts)
       frame-stream
-      (let ((first (first-conjunct conjuncts))
-            (rest (rest-conjuncts conjuncts)))
-        (if (or (and (all-vars-bound? first frame-stream) (filter? first))
-                (and (empty-conjunction? rest) (filter? first))
-                (not (filter? first)))
-            (conjoin-w-filter rest
-                              (qeval first frame-stream))
-            (conjoin-w-filter (cons (first-conjunct rest) (cons first (rest-conjuncts rest)))
-                              frame-stream)))))
-
-(define (all-vars-bound? conjunct frame-stream)
-  (define (tree-walk exp frame)
-    (cond ((null? exp) #t)
-          ((var? exp)
-           (let ((binding (binding-in-frame exp frame)))
-             (if (not binding)
-                 #f #t)))
-          ((pair? exp)
-           (if (tree-walk (car exp) frame)
-               (tree-walk (cdr exp) frame)
-               #f))
-          (else #t)))
-  (stream-ormap (lambda (frame) (tree-walk conjunct frame)) frame-stream))
-
-(define test-in-alt '((not (job (? x) (computer programmer))) (supervisor (? x) (? y))))
-
-(define (filter? conjunct)
-  (let ((prefix (car conjunct)))
-    (or (equal? prefix 'not) (equal? prefix 'unique) (equal? prefix 'lisp-value))))
-
-(define (any-filters? conjuncts)
-  (ormap (lambda (conjunct) (or (equal? (car conjunct) 'not) (equal? (car conjunct) 'unique) (equal? (car conjunct) 'lisp-value)))
-             conjuncts))
-
-(define (conjoin4.76 conjuncts frame-stream)
-  (if (empty-conjunction? conjuncts)
-      frame-stream
-      (let ((first-c (qeval (first-conjunct conjuncts) frame-stream)))
-        (if (empty-conjunction? (rest-conjuncts conjuncts))
-            (match-frames first-c frame-stream)
-            (conjoin4.76 (rest-conjuncts (rest-conjuncts conjuncts))
-                         (match-frames first-c (qeval (first-conjunct (rest-conjuncts conjuncts)) frame-stream)))))))
-(define (match-frames con1-frame-stream con2-frame-stream) 
-  (stream-flatmap
-   (lambda (1st-stream-frame)
-     (stream-flatmap
-      (lambda (2nd-stream-frame)
-        (match-if-compatible 1st-stream-frame 2nd-stream-frame (singleton-stream '())))
-      con2-frame-stream))
-   con1-frame-stream))
-;;; TODO fix match-if-compatible
-;;; test query is: (and (lives-near ?x (Bitdiddle Ben)) (job ?x ?j)))
-(define (match-if-compatible f1 f2 result-frame)
-  (cond ((equal? result-frame 'failed) the-empty-stream)
-        ((and (null? f1) (null? f2)) (singleton-stream result-frame))
-        ((null? f1) (singleton-stream (combine-frame f2 result-frame)))
-        ((null? f2) (singleton-stream (combine-frame f1 result-frame)))
-        (else
-         (let ((first-bind (first-binding f1)))
-           (let ((first-attempt (binding-in-frame (binding-variable first-bind) f2)))
-             (if (equal? first-attempt first-bind)
-                 (match-if-compatible (rest-bindings f1) (remove first-bind f2)
-                                      (extend (binding-variable first-bind) (binding-value first-bind) result-frame))
-                 (if first-attempt
-                     (cond
-                       ((var? (binding-value first-bind))
-                        (match-if-compatible (rest-bindings f1) (remove first-attempt f2)
-                                             (extend-if-poss-and-consistent
-                                              (binding-variable first-bind) (binding-value first-bind) (binding-value first-attempt) f1 f2 result-frame)))
-                       ((var? (binding-value first-attempt))
-                        (match-if-compatible (rest-bindings f1) (remove first-attempt f2)
-                                             (extend-if-poss-and-consistent
-                                              (binding-variable first-attempt) (binding-value first-attempt) (binding-value first-bind) f2 f1 result-frame)))
-                       (else the-empty-stream))
-                     (match-if-compatible (rest-bindings f1) f2
-                                          (extend (binding-variable first-bind) (binding-value first-bind) result-frame)))))))))
-(define (combine-frame f1 result-frame)
-  (if (null? f1) result-frame
-      (let ((first-bind (first-binding f1)))
-        (combine-frame (rest-bindings f1) (extend (binding-variable first-bind) (binding-value first-bind) result-frame)))))
-(define (extend-if-poss-and-consistent
-         first-var first-val other-val first-val-frame other-val-frame result-frame)
-  (let ((binding (binding-in-frame first-val result-frame)))
-    (if binding
-        (let ((new-val (binding-value binding)))
-          (cond ((var? other-val)
-                 (extend-if-poss-and-consistent
-                  first-var other-val new-val other-val-frame first-val-frame result-frame))
-                ((equal? new-val other-val)
-                 (extend first-var new-val result-frame))
-                (else 'failed)))
-        (let ((binding2 (binding-in-frame first-val first-val-frame)))
-          (if binding2
-              (let ((new-val2 (binding-value binding2)))
-                (cond ((var? other-val)
-                       (extend-if-poss-and-consistent
-                        first-var other-val new-val2 other-val-frame first-val-frame result-frame))
-                      ((equal? new-val2 other-val)
-                       (extend first-var new-val2 result-frame))
-                      (else 'failed)))
-              'failed)))))
+      (let ((first-con (qeval (first-conjunct conjuncts) frame-stream env)))
+        (let ((first-con-frame-stream (car first-con)) (first-con-env (cdr first-con)))
+      (conjoin (rest-conjuncts conjuncts)
+               first-con-frame-stream first-con-env)))))
 (put 'and 'qeval conjoin)
 
-(define (disjoin disjuncts frame-stream)
+(define (disjoin disjuncts frame-stream env)
   (if (empty-disjunction? disjuncts)
       the-empty-stream
       (interleave-delayed
-;      (stream-append-delayed
-       (qeval (first-disjunct disjuncts) frame-stream)
-       (delay (disjoin (rest-disjuncts disjuncts) frame-stream)))))
+       (qeval (first-disjunct disjuncts) frame-stream env)
+       (delay (disjoin (rest-disjuncts disjuncts) frame-stream env)))))
 (put 'or 'qeval disjoin)
 
-(define (negate operands frame-stream)
+(define (negate operands frame-stream env)
   (simple-stream-flatmap
    (lambda (frame)
      (if (stream-null?
           (qeval (negated-query operands)
-                 (singleton-stream frame)))
+                 (singleton-stream frame) env))
          (singleton-stream frame)
          the-empty-stream))
    frame-stream))
 (put 'not 'qeval negate)
 
-(define (uniquely-asserted query frame-stream)
+(define (uniquely-asserted query frame-stream env)
   (stream-flatmap
    (lambda (frame)
      (if (null?
           (stream-cdr
            (qeval (maybe-unique-query query)
-                  (singleton-stream frame))))
+                  (singleton-stream frame) env)))
          (qeval (maybe-unique-query query)
-                  (singleton-stream frame))
+                  (singleton-stream frame) env)
          the-empty-stream))
   frame-stream))
 (put 'unique 'qeval uniquely-asserted)
 
-(define (lisp-value call frame-stream)
+(define (lisp-value call frame-stream env)
   (simple-stream-flatmap
    (lambda (frame)
      (if (execute
@@ -402,20 +298,20 @@
         (pattern-match (binding-value binding) dat frame)
         (extend var dat frame))))
 
-(define (apply-rules pattern frame)
+(define (apply-rules pattern frame env)
   (stream-flatmap (lambda (rule)
-                    (apply-a-rule rule pattern frame))
+                    (apply-a-rule rule pattern frame env))
                   (fetch-rules pattern frame)))
 
-(define (apply-a-rule rule query-pattern query-frame)
-  (let ((clean-rule (rename-variables-in rule)))
+(define (apply-a-rule rule query-pattern query-frame env)
+  ;(let ((clean-rule (rename-variables-in rule)))
     (let ((unify-result (unify-match query-pattern
-                                     (conclusion clean-rule)
+                                     (conclusion rule)
                                      query-frame)))
       (if (eq? unify-result 'failed)
           the-empty-stream
-          (qeval (rule-body clean-rule)
-                 (singleton-stream unify-result))))))
+          (qeval (rule-body rule)
+                 (singleton-stream '()) unify-result))))
 
 (define (rename-variables-in rule)
   (let ((rule-application-id (new-rule-application-id)))
@@ -682,9 +578,9 @@
            (and (address (? person-1) ((? town) . (? rest-1)))
                 (address (? person-2) ((? town) . (? rest-2)))
                 (not (same (? person-1) (? person-2)))))
-     (rule (wheel ?person)
-           (and (supervisor ?middle-manager ?person)
-                (supervisor ?x ?middle-manager)))
+     (rule (wheel (? person))
+           (and (supervisor (? middle-manager) (? person))
+                (supervisor (? grunt) (? middle-manager))))
 
      (address (Warbucks Oliver) (Swellesley (Top Heap Road)))
      (job (Warbucks Oliver) (administration big wheel))
@@ -738,13 +634,6 @@
      (can-do-job (administration secretary)
                  (administration big wheel)))))
 initialize-database
-(define frames1 (qeval '(lives-near (? x) (Bitdiddle Ben)) (singleton-stream '())))
-(define frames2 (qeval '(job (? x) (? j)) (singleton-stream '())))
-(define frame1 (stream-car (qeval '(lives-near (? x) (Bitdiddle Ben)) (singleton-stream '()))))
-(define frame2 (stream-car (qeval '(job (? x) (? j)) (singleton-stream '()))))
-(match-frames (qeval '(supervisor (? u) (? s)) (singleton-stream '())) (qeval '(job (? s) (computer (? j))) (singleton-stream '())))
-(define test-frame (stream-car (match-frames (qeval '(supervisor (? u) (? s)) (singleton-stream '()))
-                                                         (qeval '(job (? s) (computer (? j))) (singleton-stream '())))))
 
-(define test-rule (stream-car (fetch-rules '(wheel (? x)) (singleton-stream '()))))
-(match-frames frames1 frames2)
+(qeval '(and (supervisor (? middle-manager) (? person))
+                (supervisor (? grunt) (? middle-manager))) (singleton-stream (unify-match '(wheel (? x)) '(wheel (? person)) (singleton-stream '()))))
