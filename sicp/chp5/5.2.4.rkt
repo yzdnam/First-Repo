@@ -3,7 +3,7 @@
 (define (tagged-list? exp symb)
   (and (pair? exp)
        (equal? (car exp) symb)))
-
+      
 (define (make-machine register-names ops controller-text)
   (let ((machine (make-new-machine)))
     (for-each
@@ -16,11 +16,25 @@
     machine))
 
 (define (make-register name)
-  (let ((contents '*unassigned*))
+  (let ((contents '*unassigned*)
+        (trace-switch 'off))
     (define (dispatch message)
       (cond ((eq? message 'get) contents)
             ((eq? message 'set)
-             (lambda (value) (set! contents value)))
+             (if (equal? trace-switch 'on)
+                 (lambda (value)
+                   (display name) (display " register trace:")
+                   (newline)
+                   (display "old value:") (display contents)
+                   (newline)
+                   (display "new value:") (display value)
+                   (newline)
+                   (set! contents value))
+                 (lambda (value) (set! contents value))))
+            ((eq? message 'trace-on)
+             (set! trace-switch 'on))
+            ((eq? message 'trace-off)
+             (set! trace-switch 'off))
             (else
              (error "Unknown request: REGISTER" message))))
     dispatch))
@@ -70,16 +84,35 @@
 
 (define (make-new-machine)
   (let ((pc (make-register 'pc))
+        (text-pc (make-register 'text-pc))
         (flag (make-register 'flag))
+        (trace-switch (make-register 'trace-switch))
         (stack (make-stack))
-        (the-instruction-sequence '()))
+        (the-instruction-sequence '())
+        (instruction-count 0)
+        (breakpoints '()))
     (let ((the-ops
            (list (list 'initialize-stack
                        (lambda () (stack 'initialize)))
                  (list 'print-stack-statistics
-                       (lambda () (stack 'print-statistics)))))
+                       (lambda () (stack 'print-statistics)))
+                 (list 'reset-instruction-count
+                       (lambda () (set! instruction-count 0)))
+                 (list 'print-instruction-count
+                       (lambda () (newline) (display (list 'instruction-count '= instruction-count))))))
           (register-table
-           (list (list 'pc pc) (list 'flag flag))))
+           (list (list 'pc pc) (list 'flag flag) (list 'trace-switch trace-switch))))
+      (define (add-breakpoint label offset)
+        (set! breakpoints (cons (list label offset) breakpoints)))
+      (define (cancel-all-breakpoints)
+        (set! breakpoints '()))
+      (define (cancel-breakpoint label offset breakpoints-copy rest)
+        (if (null? breakpoints-copy)
+            (error "Cancel Breakpoint: Breakpoint does not exist")
+            (let ((first (car breakpoints-copy)))
+              (if (and (equal? label (car first)) (equal? offset (cadr first)))
+                  (set! breakpoints (append rest (cdr breakpoints-copy)))
+                  (cancel-breakpoint label offset (cdr breakpoints-copy) (cons first rest))))))
       (define (allocate-register name)
         (if (assoc name register-table)
             (error "Multiply defined register: " name)
@@ -92,16 +125,80 @@
           (if val
               (cadr val)
               (error "Unknown register:" name))))
+      (define (trace-switch-reg name switch-status)
+        (let ((val (assoc name register-table)))
+          (if val
+              (if (equal? switch-status 'on)
+                  ((cadr val) 'trace-on)
+                  ((cadr val) 'trace-off))
+              (error "Unknown register:" name))))
       (define (execute)
         (let ((insts (get-contents pc)))
           (if (null? insts)
               'done
-              (begin
-                ((instruction-execution-proc (car insts)))
-                (execute)))))
+              (let ((trace-status (get-contents trace-switch)))
+                (if (or (equal? trace-status 'off) (equal? trace-status '*unassigned*))
+                    (if (symbol? (car insts))
+                        (let ((break (assoc (car insts) breakpoints)))
+                          (if break
+                              (begin
+                                (display (car insts))
+                                (newline)
+                                (advance-pc pc)
+                                (execute-and-break (cadr break)))
+                              (begin
+                                (advance-pc pc)
+                                (execute))))
+                        (begin
+                          ((instruction-execution-proc (car insts)))
+                          (set! instruction-count (inc instruction-count))
+                          (execute)))
+                    (if (symbol? (car insts))
+                        (let ((break (assoc (car insts) breakpoints)))
+                          (if break
+                              (begin
+                                (display (car insts))
+                                (newline)
+                                (advance-pc pc)
+                                (execute-and-break (cadr break)))
+                              (begin
+                                (display (car insts))
+                                (newline)
+                                (advance-pc pc)
+                                (execute))))
+                        (begin
+                          (display (instruction-text (car insts)))
+                          (newline)
+                          ((instruction-execution-proc (car insts)))
+                          (set! instruction-count (inc instruction-count))
+                          (execute))))))))
+      (define (execute-and-break n)
+        (if (> n 0)
+            (let ((insts (get-contents pc)))
+              (if (null? insts)
+                  'done
+                  (let ((next-inst (car insts)))
+                    (if (symbol? next-inst)
+                        (begin
+                          (display next-inst)
+                          (newline)
+                          (advance-pc pc)
+                          (execute-and-break (dec n)))
+                        (begin
+                          (display (instruction-text next-inst))
+                          (newline)
+                          ((instruction-execution-proc next-inst))
+                          (set! instruction-count (inc instruction-count))
+                          (execute-and-break (dec n)))))))))
+      (define (display-instruction-count)
+        (newline) (display (list 'instruction-count '= instruction-count)))
       (define (dispatch message)
         (cond ((eq? message 'start)
+               (stack 'initialize)
+               (set! instruction-count 0)
                (set-contents! pc the-instruction-sequence)
+               (execute))
+              ((eq? message 'proceed)
                (execute))
               ((eq? message 'install-instruction-sequence)
                (lambda (seq)
@@ -115,6 +212,22 @@
                  (set! the-ops (append the-ops ops))))
               ((eq? message 'stack) stack)
               ((eq? message 'operations) the-ops)
+              ((eq? message 'trace-on)
+               (set-contents! trace-switch 'on))
+              ((eq? message 'trace-off)
+               (set-contents! trace-switch 'off))
+              ((eq? message 'instruction-count)
+               (display-instruction-count))
+              ((eq? message 'trace-switch-reg)
+               trace-switch-reg)
+              ((eq? message 'add-breakpoint)
+               add-breakpoint)
+              ((eq? message 'breakpoints)
+               breakpoints)
+              ((eq? message 'cancel-breakpoint)
+               (lambda (label n) (cancel-breakpoint label n breakpoints '())))
+              ((eq? message 'cancel-all-breakpoints)
+               (cancel-all-breakpoints))
               (else (error "Unknown request: MACHINE"
                            message))))
       dispatch)))
@@ -126,6 +239,24 @@
   (set-contents! (get-register machine register-name)
                  value)
   'done)
+(define (proceed machine) (machine 'proceed))
+
+(define (trace-on machine)
+  (machine 'trace-on))
+(define (trace-off machine)
+  (machine 'trace-off))
+
+(define (trace-on-reg name machine)
+  ((machine 'trace-switch-reg) name 'on))
+(define (trace-off-reg name machine)
+  ((machine 'trace-switch-reg) name 'off))
+
+(define (set-breakpoint machine label n)
+  ((machine 'add-breakpoint) label n))
+(define (cancel-breakpoint machine label n)
+  ((machine 'cancel-breakpoint) label n))
+(define (cancel-all-breakpoints machine)
+  (machine 'cancel-all-breakpoints))
 
 (define (get-register machine reg-name)
   ((machine 'get-register) reg-name))
@@ -145,7 +276,7 @@
        (lambda (insts labels)
          (let ((next-inst (car text)))
            (if (symbol? next-inst)
-               (receive insts
+               (receive (cons next-inst insts)
                         (if (dupe-label? next-inst labels)
                             (error "Label already exists: " next-inst)
                             (cons (make-label-entry next-inst
@@ -167,11 +298,12 @@
         (ops (machine 'operations)))
     (for-each
      (lambda (inst)
-       (set-instruction-execution-proc!
-        inst
-        (make-execution-procedure
-         (instruction-text inst)
-         labels machine pc flag stack ops)))
+       (if (not (symbol? inst))
+           (set-instruction-execution-proc!
+            inst
+            (make-execution-procedure
+             (instruction-text inst)
+             labels machine pc flag stack ops))))
      insts)))
 
 (define (make-instruction text) (cons text '()))
@@ -188,7 +320,7 @@
 (define (lookup-label labels label-name)
   (let ((val (assoc label-name labels)))
     (if val
-        (cdr val)
+        val
         (error "Undefined label: ASSEMBLE"
                label-name))))
 
@@ -356,100 +488,67 @@
         (error "Unknown operation: ASSEMBLE"
                symbol))))
 
-; EX 5.3
-;'(controller
-; sqrt-loop
-;    (assign x (op read))
-;    (assign guess (const 1))
-; good-enough?
-;    (test (op <) (op abs) (op -) (op square) (reg guess) (reg x) (const 0.001))
-;    (branch (label sqrt-done))
-;    (assign (reg guess) (op average) (reg guess) (op /) (reg x) (reg guess))
-;    (goto (label good-enough?))
-; sqrt-done
-;    (perform (op print) (reg guess))
-;    (goto (label sqrt-loop)))
-
-; EX 5.4 and 5.7
-; a.
-(define expt-recur-machine
+(define fact-machine
   (make-machine
-   '(b n val continue)
-   (list (list '= =) (list '- -) (list '* *))
+   '(n val continue)
+   (list (list 'read read) (list 'newline newline) (list 'print display) (list '= =) (list '- -) (list '* *))
    '(controller
-    (assign continue (label expt-done))
-    expt-loop
-       (test (op =) (reg n) (const 0))
-       (branch (label base-case))
-       (save continue)
-       (assign n (op -) (reg n) (const 1))
-       (assign continue (label after-expt))
-       (goto (label expt-loop))
-    after-expt
-       (restore continue)
-       (assign val (op *) (reg b) (reg val))
-       (goto (reg continue))
-    base-case
-       (assign val (const 1))
-       (goto (reg continue))
-    expt-done)))
+;     read-loop
+;     (assign n (op read))
+     (assign continue (label fact-done)) ;set up final return address
+     fact-loop
+     (test (op =) (reg n) (const 1))
+     (branch (label base-case))
+     ;; Set up for the recursive call by saving n and continue.
+     ;; Set up continue so that the computation will continue
+     ;; at after-fact when the subroutine returns.
+     (save continue)
+     (save n)
+     (assign n (op -) (reg n) (const 1))
+     (assign continue (label after-fact))
+     (goto (label fact-loop))
+     after-fact
+     (restore n)
+     (restore continue)
+     (assign val (op *) (reg n) (reg val)) ;val now contains n(n - 1)!
+     (goto (reg continue)) ;return to caller
+     base-case
+     (assign val (const 1)) ;base case: 1! = 1
+     (goto (reg continue)) ;return to caller
+     fact-done
+     )))
+;     (perform (op print) (reg val))
+;     (perform (op print-stack-statistics))
+;     (perform (op initialize-stack))
+;     (perform (op print-instruction-count))
+;     (perform (op reset-instruction-count))
+;     (perform (op newline))
+;     (goto (label read-loop)))))
 
-(define expt-iter-machine
+;(trace-on fact-machine)     
+(set-register-contents! fact-machine 'n 10)
+;(trace-on-reg 'n fact-machine)
+(set-breakpoint fact-machine 'after-fact 10)
+(start fact-machine)
+(get-register-contents fact-machine 'val)
+((fact-machine 'stack) 'print-statistics)
+(fact-machine 'instruction-count)
+
+(define gcd-machine
   (make-machine
-   '(b n counter product)
-   (list (list '- -) (list '* *) (list '= =))
-   '(controller
-     (assign counter (reg n))
-     (assign product (const 1))
-     expt-iter
-        (test (op =) (reg counter) (const 0))
-        (branch (label expt-iter-done))
-        (assign counter (op -) (reg counter) (const 1))
-        (assign product (op *) (reg b) (reg product))
-        (goto (label expt-iter))
-     expt-iter-done)))
-
-(define fib-machine
-  (make-machine
-   '(n continue val)
-   (list (list '< <) (list '- -) (list '+ +))
-   '(controller
-     (assign continue (label fib-done))
-     fib-loop
-        (test (op <) (reg n) (const 2))
-        (branch (label immediate-answer))
-     ;; set up to compute Fib(n  1)
-        (save continue)
-        (assign continue (label afterfib-n-1))
-        (save n) ; save old value of n
-        (assign n (op -) (reg n) (const 1)) ; clobber n to n-1
-        (goto (label fib-loop)) ; perform recursive call
-     afterfib-n-1 ; upon return, val contains Fib(n  1)
-        (restore n)
-        ;(restore continue)
-     ;; set up to compute Fib(n  2)
-        (assign n (op -) (reg n) (const 2))
-        ;(save continue)
-        (assign continue (label afterfib-n-2))
-        (save val) ; save Fib(n  1)
-        (goto (label fib-loop))
-     afterfib-n-2 ; upon return, val contains Fib(n  2)
-        ; (assign n (reg val)) ; n now contains Fib(n  2) ;;; commented out as part of solution to Ex 5.11a.
-        (restore n) ; val now contains Fib(n  1) ;;;; changed from (restore val) to (restore n) for solution to Ex 5.11a.
-        (restore continue)
-        (assign val ; Fib(n  1) + Fib(n  2)
-                (op +) (reg val) (reg n))
-        (goto (reg continue)) ; return to caller, answer is in val
-     immediate-answer
-        (assign val (reg n)) ; base case: Fib(n) = n
-        (goto (reg continue))
-     fib-done)))
-
-(define (fib n)
-  (if (< n 2)
-      n
-      (+ (fib (- n 1)) (fib (- n 2)))))
-
-(set-register-contents! fib-machine 'n 6)
-(start fib-machine)
-(get-register-contents fib-machine 'val)
+   '(b a t continue)
+   (list (list 'rem remainder) (list '< <) (list '= =) (list '- -))
+   '(controller test-b
+                (test (op =) (reg b) (const 0))
+                (branch (label gcd-done))
+                (assign t (reg a))
+                rem-loop
+                (test (op <) (reg t) (reg b))
+                (branch (label rem-done))
+                (assign t (op -) (reg t) (reg b))
+                (goto (label rem-loop))
+                rem-done
+                (assign a (reg b))
+                (assign b (reg t))
+                (goto (label test-b))
+                gcd-done)))

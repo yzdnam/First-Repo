@@ -8,17 +8,20 @@
 (define (tagged-list? exp symb)
   (and (pair? exp)
        (equal? (car exp) symb)))
-      
 
 (define (make-machine register-names ops controller-text)
   (let ((machine (make-new-machine)))
-    (for-each
-     (lambda (register-name)
-       ((machine 'allocate-register) register-name))
-     register-names)
+;    (for-each
+;     (lambda (register-name)
+;       ((machine 'allocate-register) register-name))
+;     register-names)
     ((machine 'install-operations) ops)
-    ((machine 'install-instruction-sequence)
+    (apply (machine 'install-instruction-sequence)
      (assemble controller-text machine))
+    (for-each
+     (lambda (inst)
+       ((machine 'collect-register-sources) inst))
+     controller-text)
     machine))
 
 (define (make-register name)
@@ -63,7 +66,11 @@
   (let ((pc (make-register 'pc))
         (flag (make-register 'flag))
         (stacks '())
-        (the-instruction-sequence '()))
+        (the-instruction-sequence '())
+        (instruction-list '())
+        (entry-point-registers '())
+        (stacked-registers '())
+        (register-sources '()))
     (let ((the-ops
            (list (list 'initialize-stacks
                        (lambda () (if (not (null? stacks))
@@ -80,10 +87,23 @@
               (set! register-table
                     (cons (list name (make-register name))
                           register-table))
+              (set! register-sources (cons (list name) register-sources))
               (set! stacks
                     (cons (list name (make-stack name))
                           stacks))))
         'register-allocated)
+      (define (collect-register-sources inst)
+        (if (not (symbol? inst))
+            (if (equal? (car inst) 'assign)
+                (let ((reg-source-pair (cadr inst)))
+                  (let ((reg (car reg-source-pair))
+                        (source (cdr reg-source-pair)))
+                    (let ((subtable
+                           (assoc reg register-sources)))
+                      (if (not (dupe? source subtable))
+                      (set-cdr! subtable
+                                (cons source
+                                      (cdr subtable))))))))))
       (define (lookup-register name)
         (let ((val (assoc name register-table)))
           (if val
@@ -106,10 +126,23 @@
                (set-contents! pc the-instruction-sequence)
                (execute))
               ((eq? message 'install-instruction-sequence)
-               (lambda (seq)
-                 (set! the-instruction-sequence seq)))
+               (lambda (insts sorted-insts entry-point-regs stacked-regs)
+                 (set! the-instruction-sequence insts)
+                 (set! instruction-list sorted-insts)
+                 (set! entry-point-registers entry-point-regs)
+                 (set! stacked-registers stacked-regs)))
+              ((eq? message 'collect-register-sources)
+               collect-register-sources)
+              ((eq? message 'instruction-list)
+               instruction-list)
+              ((eq? message 'entry-point-regs)
+               entry-point-registers)
+              ((eq? message 'stacked-regs)
+               stacked-registers)
               ((eq? message 'allocate-register)
                allocate-register)
+              ((eq? message 'reg-sources)
+                register-sources)
               ((eq? message 'get-register)
                lookup-register)
               ((eq? message 'install-operations)
@@ -119,6 +152,8 @@
               ((eq? message 'get-stack)
                lookup-stack)
               ((eq? message 'operations) the-ops)
+              ((eq? message 'register-table)
+               register-table)
               (else (error "Unknown request: MACHINE"
                            message))))
       dispatch)))
@@ -131,50 +166,127 @@
                  value)
   'done)
 
+(define (get-instruction-list machine)
+  (machine 'instruction-list))
+(define (get-entry-point-registers machine)
+  (machine 'entry-point-regs))
+(define (get-stacked-registers machine)
+  (machine 'stacked-regs))
+(define (get-register-sources machine)
+  (machine 'reg-sources))
+
 (define (get-register machine reg-name)
   ((machine 'get-register) reg-name))
 (define (get-stack machine reg-name)
   ((machine 'get-stack) reg-name))
 
+(define (allocate-register machine reg-name)
+  ((machine 'allocate-register) reg-name))
+
+(define (show-register-table machine)
+  (map car (machine 'register-table)))
+
+(define (allocate-register? machine inst)
+  (if (not (null? inst))
+      (cond ((and (pair? (car inst)) (equal? 'reg (caar inst)))
+             (let ((possible-reg (cadar inst)))
+               (if (not (dupe? possible-reg (show-register-table machine)))
+                   (begin
+                     (allocate-register machine possible-reg)
+                     (allocate-register? machine (cdr inst)))
+                   (allocate-register? machine (cdr inst)))))
+            ((equal? (car inst) 'assign)
+             (let ((possible-reg (assign-reg-name inst)))
+               (if (not (dupe? possible-reg (show-register-table machine)))
+                   (begin
+                     (allocate-register machine possible-reg)
+                     (allocate-register? machine (cdr inst)))
+                   (allocate-register? machine (cdr inst)))))
+            ((pair? (car inst))
+             (allocate-register? machine (car inst))
+             (allocate-register? machine (cdr inst)))
+            (else (allocate-register? machine (cdr inst))))))
+
 (define (assemble controller-text machine)
   (extract-labels
    controller-text
-   (lambda (insts sorted-insts labels)
+   (lambda (insts sorted-insts entry-point-regs stacked-regs labels)
+     (for-each
+      (lambda (inst) (allocate-register? machine inst))
+      sorted-insts)
      (update-insts! insts labels machine)
-     (list insts sorted-insts))))
+     (list insts sorted-insts entry-point-regs stacked-regs))))
 
 (define (extract-labels text receive)
   (if (null? text)
-      (receive '() '() '())
+      (receive '() '() '() '() '())
       (extract-labels
        (cdr text)
-       (lambda (insts sorted-insts labels)
+       (lambda (insts sorted-insts entry-point-regs stacked-regs labels)
          (let ((next-inst (car text)))
            (if (symbol? next-inst)
                (receive insts
                         sorted-insts
+                        entry-point-regs
+                        stacked-regs
                         (if (dupe? next-inst (map name labels))
                             (error "Label already exists: " next-inst)
                             (cons (make-label-entry next-inst
                                                 insts)
                               labels)))
-               (receive (cons (make-instruction next-inst)
-                              insts)
-                        (sort-wo-dupes (make-instruction next-inst)
-                                       sorted-insts)
-                        labels)))))))
+               (let ((new-inst (make-instruction next-inst)))
+                 (receive (cons new-inst
+                                insts)
+                          (sort-wo-dupes next-inst
+                                         sorted-insts)
+                          (add-entry-point-reg? next-inst entry-point-regs)
+                          (add-stacked-reg? next-inst stacked-regs)
+                          labels))))))))
 
 (define (sort-wo-dupes new-inst already-sorted-insts)
   (if (dupe? new-inst already-sorted-insts)
       already-sorted-insts
-      (insert new-inst already-sorted-insts)))
+      (insert new-inst already-sorted-insts '())))
 
-;;;; TODO define insert to sort instructions for EX 5.12
+(define instruction-table
+  (cons (cons 'assign 1)
+        (cons (cons 'test 2)
+              (cons (cons 'branch 3)
+                    (cons (cons 'goto 4)
+                          (cons (cons 'save 5)
+                                (cons (cons 'restore 6)
+                                      (cons (cons 'perform 7) '()))))))))
+
+(define (insert addition sorted-list1 sorted-list2)
+  (if (null? sorted-list1) (append sorted-list2 (list addition))
+      (let ((addition-index (cdr (assoc (car addition) instruction-table)))
+            (next-in-list-index (cdr (assoc (caar sorted-list1) instruction-table))))
+        (if (> addition-index next-in-list-index)
+            (insert addition (cdr sorted-list1) (append sorted-list2 (list (car sorted-list1))))
+            (append sorted-list2 (cons addition sorted-list1))))))
 
 (define (dupe? label labels)
   (cond ((null? labels) #f)
-        ((equal? label (car labels))) #t)
-        (else (dupe? label (cdr labels))))
+        ((equal? label (car labels)) #t)
+        (else (dupe? label (cdr labels)))))
+
+(define (add-entry-point-reg? new-inst entry-point-regs)
+  (if (equal? (car new-inst) 'goto)
+      (let ((new-inst-goto-dest (goto-dest new-inst)))
+        (if (and (equal? (car new-inst-goto-dest) 'reg)
+                 (not (dupe? (register-exp-reg new-inst-goto-dest) entry-point-regs)))
+            (cons (register-exp-reg new-inst-goto-dest) entry-point-regs)
+            entry-point-regs))
+      entry-point-regs))
+
+(define (add-stacked-reg? new-inst stacked-regs)
+  (if (or (equal? (car new-inst) 'save)
+          (equal? (car new-inst) 'restore))
+      (let ((new-inst-reg-name (stack-inst-reg-name new-inst)))
+        (if (not (dupe? new-inst-reg-name stacked-regs))
+            (cons new-inst-reg-name stacked-regs)
+            stacked-regs))
+      stacked-regs))
 
 (define (update-insts! insts labels machine)
   (let ((pc (get-register machine 'pc))
@@ -399,7 +511,7 @@
    '(b n val continue)
    (list (list '= =) (list '- -) (list '* *))
    '(controller
-    (assign (continue (label expt-done)))
+     (assign (continue (label expt-done)))
     expt-loop
        (test ((op =) (reg n) (const 0)))
        (branch (label base-case))
@@ -470,3 +582,4 @@
 (set-register-contents! fib-machine 'n 6)
 (start fib-machine)
 (get-register-contents fib-machine 'val)
+(get-register-sources fib-machine)

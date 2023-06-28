@@ -77,7 +77,13 @@
            (list (list 'initialize-stack
                        (lambda () (stack 'initialize)))
                  (list 'print-stack-statistics
-                       (lambda () (stack 'print-statistics)))))
+                       (lambda () (stack 'print-statistics)))
+                 (list 'car car)
+                 (list 'cdr cdr)
+                 (list 'set-car! set-car!)
+                 (list 'set-cdr! set-cdr!)
+                 (list 'cons cons)
+                 (list 'eq? eq?)))
           (register-table
            (list (list 'pc pc) (list 'flag flag))))
       (define (allocate-register name)
@@ -450,6 +456,245 @@
       n
       (+ (fib (- n 1)) (fib (- n 2)))))
 
-(set-register-contents! fib-machine 'n 6)
-(start fib-machine)
-(get-register-contents fib-machine 'val)
+(define count-leaves-machine-v1
+  (make-machine
+   '(tree car-tree cdr-tree cdr-val val continue)
+   (list (list 'null? null?)
+         (list 'zero? zero?)
+         (list 'not-pair? (lambda (reg) (not (pair? reg))))
+         (list '+ +)
+         (list '= =)
+         (list '> >))
+   '(controller
+     (assign continue (label count-done))
+     (assign cdr-val (const 0))
+     count-loop
+     ;;; testing '(1 (1))
+        (test (op null?) (reg tree))
+        (branch (label null-answer))
+        (test (op not-pair?) (reg tree))
+        (branch (label leaf))
+        (save continue)
+        (assign continue (label leaf?))
+        (assign cdr-tree (op cdr) (reg tree))
+        (assign car-tree (op car) (reg tree))
+        (save tree)
+        (assign tree (reg cdr-tree))
+        (goto (label count-loop))
+     leaf?
+        (restore tree)
+        (assign tree (op car) (reg tree))
+        (test (op not-pair?) (reg tree))
+        (branch (label sum-leaves))
+        (test (op >) (reg cdr-val) (const 0))
+        (branch (label keep-cdr-val))
+        (assign cdr-val (reg val))
+     keep-cdr-val
+        (restore continue)
+        (goto (label count-loop))
+     sum-leaves
+        (restore continue)
+        (test (op zero?) (reg cdr-val))
+        (branch (label next-leaf))
+     accumulate
+        (assign val (op +) (const 1) (reg val))
+        (assign val (op +) (reg val) (reg cdr-val))
+        (assign cdr-val (const 0))
+        (goto (reg continue))
+     next-leaf
+        (assign val (op +) (const 1) (reg val))
+        (goto (reg continue))
+     leaf
+        (assign val (const 1))
+        (goto (reg continue))
+     null-answer
+        (assign val (const 0))
+        (goto (reg continue))
+     count-done)))
+        
+(define count-leaves-machine-v2
+  (make-machine
+   '(tree car-tree cdr-tree car-val cdr-val val continue looped?)
+   (list (list 'null? null?)
+         (list 'zero? zero?)
+         (list 'not-pair? (lambda (reg) (not (pair? reg))))
+         (list '+ +)
+         (list '= =)
+         (list '> >)
+         (list 'unassigned? (lambda (reg) (eq? reg '*unassigned*))))
+   '(controller
+     (assign continue (label count-done))
+     (assign looped? (const 0))
+     count-loop
+     ;;; testing '(1 (1))
+        (test (op null?) (reg tree))
+        (branch (label null-answer))
+        (test (op not-pair?) (reg tree))
+        (branch (label leaf))
+        (assign looped? (const 1))
+        (save continue)
+        (assign continue (label leaf?))
+        (assign cdr-tree (op cdr) (reg tree))
+        (assign car-tree (op car) (reg tree))
+        (save tree)
+        (assign tree (reg cdr-tree))
+        (goto (label count-loop))
+     leaf?
+        (restore tree)
+        (restore continue)
+        (assign tree (op car) (reg tree))
+        (test (op unassigned?) (reg cdr-val))
+        (branch (label initiate-cdr-val))
+        (assign val (op +) (reg car-val) (reg cdr-val))
+        (assign cdr-val (reg val))
+        (goto (label count-loop))
+     initiate-cdr-val
+        (assign cdr-val (reg car-val))
+        (goto (label count-loop))
+     leaf
+        (assign car-val (const 1))
+        (goto (reg continue))
+     null-answer
+        (assign car-val (const 0))
+        (goto (reg continue))
+     count-done
+        (test (op zero?) (reg looped?))
+        (branch (label set-answer))
+        (assign val (op +) (reg val) (reg car-val))
+        (assign car-val (reg val))
+     set-answer
+        (assign val (reg car-val)))))
+
+(define count-leaves-iter
+  (make-machine
+   '(tree car-tree cdr-tree val continue)
+   (list (list 'null? null?)
+         (list 'zero? zero?)
+         (list 'not-pair? (lambda (reg) (not (pair? reg))))
+         (list '+ +)
+         (list '= =)
+         (list '> >)
+         (list 'unassigned? (lambda (reg) (eq? reg '*unassigned*))))
+   '(controller
+     (assign continue (label count-done))
+     (assign val (const 0))
+     count-loop
+     ;;; testing '(1 (1))
+        (test (op null?) (reg tree))
+        (branch (label null-answer))
+        (test (op not-pair?) (reg tree))
+        (branch (label leaf))
+        (save continue)
+        (assign continue (label leaf?))
+        (assign cdr-tree (op cdr) (reg tree))
+        (assign car-tree (op car) (reg tree))
+        (save tree)
+        (assign tree (reg car-tree))
+        (goto (label count-loop))
+     leaf?
+        (restore tree)
+        (restore continue)
+        (assign tree (op cdr) (reg tree))
+        (goto (label count-loop))
+     leaf
+        (assign val (op +) (reg val) (const 1))
+        (goto (reg continue))
+     null-answer
+        (goto (reg continue))
+     count-done)))
+
+(define test-tree '(1 (1 (1)) 2 3))
+(define test-tree0 '(1 2))
+
+;(set-register-contents! count-leaves-machine 'tree test-tree0)
+;(start count-leaves-machine)
+;(get-register-contents count-leaves-machine 'val)
+(set-register-contents! count-leaves-machine-v2 'tree test-tree)
+(start count-leaves-machine-v2)
+(get-register-contents count-leaves-machine-v2 'val)
+
+(set-register-contents! count-leaves-iter 'tree test-tree)
+(start count-leaves-iter)
+(get-register-contents count-leaves-iter 'val)
+
+(define (count-leaves tree)
+  (cond ((null? tree) 0)
+        ((not (pair? tree)) 1)
+        (else (+ (count-leaves (car tree))
+                 (count-leaves (cdr tree))))))
+
+;(count-leaves test-tree)
+
+; EX 3.12: implement append and append! from pg. 345-346
+(define append-machine
+  (make-machine
+   '(x y cdr-x result continue)
+   (list (list 'null? null?)
+         (list 'zero? zero?)
+         (list 'not-pair? (lambda (reg) (not (pair? reg))))
+         (list '+ +)
+         (list '= =)
+         (list '> >)
+         (list 'unassigned? (lambda (reg) (eq? reg '*unassigned*))))
+   '(controller
+     (assign continue (label done))
+     test
+        (test (op null?) (reg x))
+        (branch (label immediate-answer))
+        (save continue)
+        (assign continue (label reconstruct))
+        (assign cdr-x (op cdr) (reg x))
+        (save x)
+        (assign x (reg cdr-x))
+        (goto (label test))
+     reconstruct
+        (restore x)
+        (restore continue)
+        (assign x (op car) (reg x))
+        (assign result (op cons) (reg x) (reg result))
+        (goto (reg continue))
+     immediate-answer
+        (assign result (reg y))
+        (goto (reg continue))
+     done)))
+
+(set-register-contents! append-machine 'x '(a b c))
+(set-register-contents! append-machine 'y '(d e f))
+(start append-machine)
+(get-register-contents append-machine 'result)
+
+(define append!-machine
+  (make-machine
+   '(x y cdr-x result continue)
+   (list (list 'null? null?)
+         (list 'zero? zero?)
+         (list 'not-pair? (lambda (reg) (not (pair? reg))))
+         (list '+ +)
+         (list '= =)
+         (list '> >)
+         (list 'unassigned? (lambda (reg) (eq? reg '*unassigned*))))
+   '(controller
+     (assign continue (label done))
+     test
+        (assign cdr-x (op cdr) (reg x))
+        (test (op null?) (reg cdr-x))
+        (branch (label last-pair))
+        (save continue)
+        (assign continue (label restore-x))
+        (assign cdr-x (op cdr) (reg x))
+        (save x)
+        (assign x (reg cdr-x))
+        (goto (label test))
+     last-pair
+        (perform (op set-cdr!) (reg x) (reg y))
+        (goto (reg continue))
+     restore-x
+        (restore x)
+        (restore continue)
+        (goto (reg continue))
+     done)))
+
+(set-register-contents! append!-machine 'x '(a b c))
+(set-register-contents! append!-machine 'y '(d e f))
+(start append!-machine)
+(get-register-contents append!-machine 'x)
