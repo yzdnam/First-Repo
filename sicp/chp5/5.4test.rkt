@@ -326,8 +326,8 @@
 (define (label-exp-label exp) (cadr exp))
 
 (define (make-operation-exp exp machine labels operations)
-  (if (any-labels? (operation-exp-operands exp))
-      (error "Bad operand: " exp)
+  ;(if (any-labels? (operation-exp-operands exp))
+  ;    (error "Bad operand: " exp)
       (let ((op (lookup-prim (operation-exp-op exp)
                              operations))
             (aprocs
@@ -335,7 +335,7 @@
                     (make-primitive-exp e machine labels))
                   (operation-exp-operands exp))))
         (lambda ()
-          (apply op (map (lambda (p) (p)) aprocs))))))
+          (apply op (map (lambda (p) (p)) aprocs)))))
 
 (define (any-labels? operands)
   (cond ((null? operands) #f)
@@ -355,13 +355,6 @@
         (cadr val)
         (error "Unknown operation: ASSEMBLE"
                symbol))))
-
-(define (make-compiled-procedure entry env)
-  (list 'compiled-procedure entry env))
-(define (compiled-procedure? proc)
-  (tagged-list? proc 'compiled-procedure))
-(define (compiled-procedure-entry c-proc) (cadr c-proc))
-(define (compiled-procedure-env c-proc) (caddr c-proc))
 
 (define (empty-arglist) '())
 (define (adjoin-arg arg arglist) (append arglist (list arg)))
@@ -567,6 +560,49 @@
           (error "Too many arguments supplied" vars vals)
           (error "Too few arguments supplied" vars vals))))
 
+(define (make-lex-addr frame var)
+  (list frame var))
+(define (lex-addr-frame lex-addr)
+  (car lex-addr))
+(define (lex-addr-var lex-addr)
+  (cadr lex-addr))
+
+(define (find-variable var ct-env0)
+  (define (accum-frames frame-pos displacement ct-env)
+    (if (equal? ct-env the-empty-environment)
+        'not-found
+        (let ((cur-frame (car ct-env)))
+          (if (memq var cur-frame)
+              (accum-displacement frame-pos displacement cur-frame)
+              (accum-frames (inc frame-pos) displacement (cdr ct-env))))))
+  (define (accum-displacement frame-pos displacement frame)
+    (if (equal? var (car frame))
+        (list frame-pos displacement)
+        (accum-displacement frame-pos (inc displacement) (cdr frame))))
+  (accum-frames 0 0 ct-env0))
+    
+
+(define (lexical-address-lookup address env)
+  (let ((frame-number (lex-addr-frame address))
+        (disp-number (lex-addr-var address)))
+    (if (zero? frame-number)
+        (let ((cur-frame (first-frame env)))
+          (let ((cur-frame-vals (frame-values cur-frame)))
+            (let ((result (list-ref cur-frame-vals disp-number)))
+              (if (equal? result '*unassigned*)
+                  (error "Unbound variable: LOOKUP" (list-ref (frame-variables cur-frame) disp-number))
+                  result))))
+          (lexical-address-lookup (make-lex-addr (dec frame-number) disp-number) (enclosing-environment env)))))
+
+(define (lexical-address-set! address val env)
+  (let ((frame-number (lex-addr-frame address))
+        (disp-number (lex-addr-var address)))
+    (if (zero? frame-number)
+        (let ((cur-frame (first-frame env)))
+          (let ((cur-frame-vals (frame-values cur-frame)))
+            (set-car! (memq (list-ref cur-frame-vals disp-number) cur-frame-vals) val)))
+        (lexical-address-set! (make-lex-addr (dec frame-number) disp-number) val (enclosing-environment env)))))
+
 (define (primitive-procedure? proc)
   (tagged-list? proc 'primitive))
 (define (primitive-implementation proc) (cadr proc))
@@ -619,9 +655,23 @@
 (define the-global-environment (setup-environment))
 (define (get-global-environment) the-global-environment)
 
+(define (make-compiled-procedure entry env)
+  (list 'compiled-procedure entry env))
+(define (compiled-procedure? proc)
+  (tagged-list? proc 'compiled-procedure))
+(define (compiled-procedure-entry c-proc) (cadr c-proc))
+(define (compiled-procedure-env c-proc) (caddr c-proc))
 
 (define eceval-operations
   (list (list 'adjoin-arg adjoin-arg) ;
+        (list 'cons cons)
+        (list 'list list)
+        (list 'lexical-address-lookup lexical-address-lookup)
+        (list 'lexical-address-set! lexical-address-set!)
+        (list 'make-compiled-procedure make-compiled-procedure)
+        (list 'compiled-procedure? compiled-procedure?)
+        (list 'compiled-procedure-entry compiled-procedure-entry)
+        (list 'compiled-procedure-env compiled-procedure-env)
          (list 'empty-arglist empty-arglist);
          (list 'last-operand? last-operand?);
          (list 'no-more-exps? no-more-exps?);
@@ -915,6 +965,13 @@
 
 (define choose-proc '(cond ((zero? x) x) (else (* x 2))))
 
+; test of (compile '((lambda (x y) 
+;              (+ x y)) 
+;            1 2) 
+;          'val 
+;          'next 
+;          the-empty-environment)
+
 (define f
   (make-machine
    '(exp env val continue proc argl unev)
@@ -954,3 +1011,300 @@
   primitive-branch6
   (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
   after-call8)))
+
+; test of (compile '(((lambda (x y) 
+;               (lambda (a b c d e) 
+;                 ((lambda (y z) (* x y z)) 
+;                  (* a b x) 
+;                  (+ c d x)))) 
+;             3 4) 
+;            1 2 3 4 5) 
+;          'val 
+;          'next )
+(define f1
+  (make-machine
+   '(exp env val continue proc argl unev)
+   eceval-operations
+   '((assign env (op get-global-environment))
+(assign proc (op make-compiled-procedure) (label entry1) (reg env))
+  (goto (label after-lambda2))
+  entry1
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (x y)) (reg argl) (reg env))
+  (assign val (op make-compiled-procedure) (label entry3) (reg env))
+  (goto (reg continue))
+  entry3
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (a b c d e)) (reg argl) (reg env))
+  (assign proc (op make-compiled-procedure) (label entry5) (reg env))
+  (goto (label after-lambda6))
+  entry5
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (y z)) (reg argl) (reg env))
+  (assign proc (op get-global-environment))
+  (assign proc (op lookup-variable-value) (const *) (reg proc))
+  (assign val (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (assign val (op lexical-address-lookup) (const (2 0)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch7))
+  compiled-branch8
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch7
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call9
+  after-lambda6
+  (save continue)
+  (save proc)
+  (save env)
+  (assign proc (op get-global-environment))
+  (assign proc (op lookup-variable-value) (const +) (reg proc))
+  (assign val (op lexical-address-lookup) (const (1 0)) (reg env))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 3)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (assign val (op lexical-address-lookup) (const (0 2)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch13))
+  compiled-branch14
+  (assign continue (label after-call15))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch13
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call15
+  (assign argl (op list) (reg val))
+  (restore env)
+  (save argl)
+  (assign proc (op get-global-environment))
+  (assign proc (op lookup-variable-value) (const *) (reg proc))
+  (assign val (op lexical-address-lookup) (const (1 0)) (reg env))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch10))
+  compiled-branch11
+  (assign continue (label after-call12))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch10
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call12
+  (restore argl)
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch16))
+  compiled-branch17
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch16
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call18
+  after-lambda4
+  after-lambda2
+  (assign val (const 4))
+  (assign argl (op list) (reg val))
+  (assign val (const 3))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch19))
+  compiled-branch20
+  (assign continue (label proc-return22))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return22
+  (assign proc (reg val))
+  (goto (label after-call21))
+  primitive-branch19
+  (assign proc (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call21
+  (assign val (const 5))
+  (assign argl (op list) (reg val))
+  (assign val (const 4))
+  (assign argl (op cons) (reg val) (reg argl))
+  (assign val (const 3))
+  (assign argl (op cons) (reg val) (reg argl))
+  (assign val (const 2))
+  (assign argl (op cons) (reg val) (reg argl))
+  (assign val (const 1))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch23))
+  compiled-branch24
+  (assign continue (label after-call25))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch23
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call25)))
+
+
+(define f2
+  (make-machine
+   '(exp env val continue proc argl unev)
+   eceval-operations
+   '((assign env (op get-global-environment))
+(assign proc (op make-compiled-procedure) (label entry1) (reg env))
+  (goto (label after-lambda2))
+  entry1
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (x)) (reg argl) (reg env))
+  (assign proc (op make-compiled-procedure) (label entry3) (reg env))
+  (goto (label after-lambda4))
+  entry3
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (add2)) (reg argl) (reg env))
+  (assign val (op make-compiled-procedure) (label entry5) (reg env))
+  (goto (label after-lambda6))
+  entry5
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (x)) (reg argl) (reg env))
+  (assign proc (op get-global-environment))
+  (assign proc (op lookup-variable-value) (const +) (reg proc))
+  (assign val (const 2))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch7))
+  compiled-branch8
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch7
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call9
+  after-lambda6
+  (perform (op lexical-address-set!) (const (0 0)) (reg val) (reg env))
+  (assign val (const ok))
+  (assign proc (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign val (op lexical-address-lookup) (const (1 0)) (reg env))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch10))
+  compiled-branch11
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch10
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call12
+  after-lambda4
+  (assign val (const *unassigned*))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch13))
+  compiled-branch14
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch13
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call15
+  after-lambda2
+  (assign val (const 4))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch16))
+  compiled-branch17
+  (assign continue (label after-call18))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch16
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call18)))
+
+(define f3
+  (make-machine
+   '(exp env val continue proc argl unev)
+   eceval-operations
+   '((assign env (op get-global-environment))
+(assign proc (op make-compiled-procedure) (label entry1) (reg env))
+  (goto (label after-lambda2))
+  entry1
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (+ * a b x y)) (reg argl) (reg env))
+  (assign proc (op lexical-address-lookup) (const (0 0)) (reg env))
+  (save continue)
+  (save proc)
+  (save env)
+  (assign proc (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign val (op lexical-address-lookup) (const (0 5)) (reg env))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 3)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch6))
+  compiled-branch7
+  (assign continue (label after-call8))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch6
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call8
+  (assign argl (op list) (reg val))
+  (restore env)
+  (save argl)
+  (assign proc (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign val (op lexical-address-lookup) (const (0 4)) (reg env))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 2)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch3))
+  compiled-branch4
+  (assign continue (label after-call5))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch3
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call5
+  (restore argl)
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch9))
+  compiled-branch10
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch9
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call11
+  after-lambda2
+  (assign val (const 4))
+  (assign argl (op list) (reg val))
+  (assign val (const 3))
+  (assign argl (op cons) (reg val) (reg argl))
+  (assign val (const 2))
+  (assign argl (op cons) (reg val) (reg argl))
+  (assign val (const 1))
+  (assign argl (op cons) (reg val) (reg argl))
+  (assign val (op get-global-environment))
+  (assign val (op lookup-variable-value) (const +) (reg val))
+  (assign argl (op cons) (reg val) (reg argl))
+  (assign val (op get-global-environment))
+  (assign val (op lookup-variable-value) (const -) (reg val))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch12))
+  compiled-branch13
+  (assign continue (label after-call14))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch12
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call14)))

@@ -526,9 +526,9 @@
 ;     (goto (label read-loop)))))
 
 ;(trace-on fact-machine)     
-(set-register-contents! fact-machine 'n 10)
+(set-register-contents! fact-machine 'n 5)
 ;(trace-on-reg 'n fact-machine)
-(set-breakpoint fact-machine 'after-fact 10)
+;(set-breakpoint fact-machine 'after-fact 10)
 (start fact-machine)
 (get-register-contents fact-machine 'val)
 ((fact-machine 'stack) 'print-statistics)

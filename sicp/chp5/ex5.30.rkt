@@ -356,13 +356,6 @@
         (error "Unknown operation: ASSEMBLE"
                symbol))))
 
-(define (make-compiled-procedure entry env)
-  (list 'compiled-procedure entry env))
-(define (compiled-procedure? proc)
-  (tagged-list? proc 'compiled-procedure))
-(define (compiled-procedure-entry c-proc) (cadr c-proc))
-(define (compiled-procedure-env c-proc) (caddr c-proc))
-
 (define (empty-arglist) '())
 (define (adjoin-arg arg arglist) (append arglist (list arg)))
 (define (last-operand? ops) (null? (cdr ops)))
@@ -542,7 +535,7 @@
             ((eq? var (car vars)) (car vals))
             (else (scan (cdr vars) (cdr vals)))))
     (if (eq? env the-empty-environment)
-        (error "Unbound variable" var)
+        'error
         (let ((frame (first-frame env)))
           (scan (frame-variables frame)
                 (frame-values frame)))))
@@ -577,9 +570,20 @@
   (apply-in-underlying-scheme
    (primitive-implementation proc) args))
 
+(define (/-err x y . z)
+  (if (zero? y)
+      (list 'error 'division-by-zero)
+      (if (null? z) (/ x y) (/-err (/ x y) (car z) (cdr z)))))
+
+(define (car-err pair)
+  (if (not (pair? pair))
+      (list 'error 'car-contract-violation)
+      (car pair)))
+
 (define primitive-procedures
-  (list (list 'car car)
+  (list (list 'car car-err)
         (list 'cdr cdr)
+        (list 'cadr cadr)
         (list 'cons cons)
         (list 'set-cdr! set-cdr!)
         (list 'null? null?)
@@ -590,6 +594,7 @@
         (list 'true? true?)
         (list 'false? false?)
         (list 'zero? zero?)
+        (list 'pair? pair?)
         ;(list 'for-each for-each)
         (list 'make-vector make-vector)
         (list '= =)
@@ -599,7 +604,7 @@
         (list '>= >=)
         (list '+ +)
         (list '- -)
-        (list '/ /)
+        (list '/ /-err)
         (list '* *)))
 (define (primitive-procedure-names)
   (map car primitive-procedures))
@@ -622,63 +627,68 @@
 
 (define eceval-operations
   (list (list 'adjoin-arg adjoin-arg) ;
-         (list 'empty-arglist empty-arglist);
-         (list 'last-operand? last-operand?);
-         (list 'no-more-exps? no-more-exps?);
-         (list 'prompt-for-input prompt-for-input);
-         (list 'read read);
-         (list 'get-global-environment get-global-environment);
-         (list 'announce-output announce-output);
-         (list 'user-print user-print);
-         (list 'self-evaluating? self-evaluating?);
-         (list 'variable? variable?);
-         (list 'quoted? quoted?);
-         (list 'assignment? assignment?);
-         (list 'definition? definition?);
-         (list 'if? if?);
-         (list 'lambda? lambda?);
-         (list 'begin? begin?);
-         (list 'cond? cond?);
-         (list 'let? let?);
-         (list 'application? application?);
-         (list 'lookup-variable-value lookup-variable-value);
-         (list 'text-of-quotation text-of-quotation);
-         (list 'lambda-parameters lambda-parameters);
-         (list 'lambda-body lambda-body);
-         (list 'make-procedure make-procedure);
-         (list 'make-begin make-begin)
-         (list 'begin-actions begin-actions);
-         (list 'first-exp first-exp);
-         (list 'last-exp? last-exp?);
-         (list 'rest-exps rest-exps);
-         (list 'if-predicate if-predicate);
-         (list 'true? true?);
-         (list 'if-alternative if-alternative);
-         (list 'if-consequent if-consequent) ;
-         (list 'assignment-variable assignment-variable) ;
-         (list 'assignment-value assignment-value) ;
-         (list 'set-variable-value! set-variable-value!) ;
-         (list 'definition-variable definition-variable) ;
-         (list 'definition-value definition-value);
-         (list 'define-variable! define-variable!) ;
-         (list 'cond->if cond->if);
-         (list 'let->combination let->combination);
-         (list 'operands operands);
-         (list 'operator operator);
-         (list 'no-operands? no-operands?) ;
-         (list 'first-operand first-operand); 
-         (list 'rest-operands rest-operands) ;
-         (list 'primitive-procedure? primitive-procedure?) 
-         (list 'compound-procedure? compound-procedure?) ;
-         (list 'apply-primitive-procedure apply-primitive-procedure)
-         (list 'procedure-parameters procedure-parameters) ;
-         (list 'procedure-environment procedure-environment) ;
-         (list 'extend-environment extend-environment)
-         (list 'procedure-body procedure-body)
-         (list 'cond-clauses cond-clauses)
-         (list 'cond-else-clause? cond-else-clause?) 
-         (list 'cond-predicate cond-predicate)
-         (list 'cond-actions cond-actions))) ;
+        (list 'not-pair? (lambda (reg) (not (pair? reg))))
+        (list 'equal? equal?)
+        (list 'pair? pair?)
+        (list 'car car)
+        (list 'cadr cadr)
+        (list 'empty-arglist empty-arglist);
+        (list 'last-operand? last-operand?);
+        (list 'no-more-exps? no-more-exps?);
+        (list 'prompt-for-input prompt-for-input);
+        (list 'read read);
+        (list 'get-global-environment get-global-environment);
+        (list 'announce-output announce-output);
+        (list 'user-print user-print);
+        (list 'self-evaluating? self-evaluating?);
+        (list 'variable? variable?);
+        (list 'quoted? quoted?);
+        (list 'assignment? assignment?);
+        (list 'definition? definition?);
+        (list 'if? if?);
+        (list 'lambda? lambda?);
+        (list 'begin? begin?);
+        (list 'cond? cond?);
+        (list 'let? let?);
+        (list 'application? application?);
+        (list 'lookup-variable-value lookup-variable-value);
+        (list 'text-of-quotation text-of-quotation);
+        (list 'lambda-parameters lambda-parameters);
+        (list 'lambda-body lambda-body);
+        (list 'make-procedure make-procedure);
+        (list 'make-begin make-begin)
+        (list 'begin-actions begin-actions);
+        (list 'first-exp first-exp);
+        (list 'last-exp? last-exp?);
+        (list 'rest-exps rest-exps);
+        (list 'if-predicate if-predicate);
+        (list 'true? true?);
+        (list 'if-alternative if-alternative);
+        (list 'if-consequent if-consequent) ;
+        (list 'assignment-variable assignment-variable) ;
+        (list 'assignment-value assignment-value) ;
+        (list 'set-variable-value! set-variable-value!) ;
+        (list 'definition-variable definition-variable) ;
+        (list 'definition-value definition-value);
+        (list 'define-variable! define-variable!) ;
+        (list 'cond->if cond->if);
+        (list 'let->combination let->combination);
+        (list 'operands operands);
+        (list 'operator operator);
+        (list 'no-operands? no-operands?) ;
+        (list 'first-operand first-operand); 
+        (list 'rest-operands rest-operands) ;
+        (list 'primitive-procedure? primitive-procedure?) 
+        (list 'compound-procedure? compound-procedure?) ;
+        (list 'apply-primitive-procedure apply-primitive-procedure)
+        (list 'procedure-parameters procedure-parameters) ;
+        (list 'procedure-environment procedure-environment) ;
+        (list 'extend-environment extend-environment)
+        (list 'procedure-body procedure-body)
+        (list 'cond-clauses cond-clauses)
+        (list 'cond-else-clause? cond-else-clause?) 
+        (list 'cond-predicate cond-predicate)
+        (list 'cond-actions cond-actions))) ;
 
 (define eceval
   (make-machine
@@ -736,7 +746,12 @@
         (goto (reg continue))
      ev-variable
         (assign val (op lookup-variable-value) (reg exp) (reg env))
+        (test (op equal?) (reg val) (const error))
+        (branch (label unbound-var-error))
         (goto (reg continue))
+     unbound-var-error
+        (assign val (const unbound-variable-error))
+        (goto (label signal-error))
      ev-quoted
         (assign val (op text-of-quotation) (reg exp))
         (goto (reg continue))
@@ -853,17 +868,33 @@
      ev-let
         (assign exp (op let->combination) (reg exp))
         (goto (label eval-dispatch))
-     ev-application
+     ev-application ; the modifications under this label, to ev-appl-did-operator, are the solution to EX 5.32a
         (save continue)
-        (save env)
         (assign unev (op operands) (reg exp))
-        (save unev)
         (assign exp (op operator) (reg exp))
+        (test (op not-pair?) (reg exp))
+        (branch (label symbol-operator))
+        ;(save continue)
+        (save env)
+        ;(assign unev (op operands) (reg exp))
+        (save unev)
+        ;(assign exp (op operator) (reg exp))
         (assign continue (label ev-appl-did-operator))
         (goto (label eval-dispatch))
      ev-appl-did-operator
         (restore unev) ; the operands
         (restore env)
+        (assign argl (op empty-arglist))
+        (assign proc (reg val)) ; the operator
+        (test (op no-operands?) (reg unev))
+        (branch (label apply-dispatch))
+        (save proc)
+     symbol-operator
+        (save unev)
+        (assign continue (label ev-appl-did-symb-operator))
+        (goto (label eval-dispatch))
+     ev-appl-did-symb-operator
+        (restore unev) ; the operands
         (assign argl (op empty-arglist))
         (assign proc (reg val)) ; the operator
         (test (op no-operands?) (reg unev))
@@ -903,8 +934,19 @@
         (assign val (op apply-primitive-procedure)
                 (reg proc)
                 (reg argl))
+        (test (op pair?) (reg val))
+        (branch (label primitive-error?))
+     continue-primitive-apply
         (restore continue)
         (goto (reg continue))
+     primitive-error?
+        (assign unev (op car) (reg val))
+        (test (op equal?) (reg unev) (const error))
+        (branch (label primitive-error))
+        (goto (label continue-primitive-apply))
+     primitive-error
+        (assign val (op cadr) (reg val))
+        (goto (label signal-error))
      compound-apply
         (assign unev (op procedure-parameters) (reg proc))
         (assign env (op procedure-environment) (reg proc))
@@ -914,43 +956,3 @@
         (goto (label ev-sequence)))))
 
 (define choose-proc '(cond ((zero? x) x) (else (* x 2))))
-
-(define f
-  (make-machine
-   '(exp env val continue proc argl unev)
-   eceval-operations
-   '((assign env (op get-global-environment))
-(assign proc (op make-compiled-procedure) (label entry1) (reg env))
-  (goto (label after-lambda2))
-  entry1
-  (assign env (op compiled-procedure-env) (reg proc))
-  (assign env (op extend-environment) (const (x y)) (reg argl) (reg env))
-  (assign proc (op get-global-environment))
-  (assign proc (op lookup-variable-value) (const +) (reg proc))
-  (assign val (op lexical-address-lookup) (const (0 1)) (reg env))
-  (assign argl (op list) (reg val))
-  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
-  (assign argl (op cons) (reg val) (reg argl))
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-branch3))
-  compiled-branch4
-  (assign val (op compiled-procedure-entry) (reg proc))
-  (goto (reg val))
-  primitive-branch3
-  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
-  (goto (reg continue))
-  after-call5
-  after-lambda2
-  (assign val (const 2))
-  (assign argl (op list) (reg val))
-  (assign val (const 1))
-  (assign argl (op cons) (reg val) (reg argl))
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-branch6))
-  compiled-branch7
-  (assign continue (label after-call8))
-  (assign val (op compiled-procedure-entry) (reg proc))
-  (goto (reg val))
-  primitive-branch6
-  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
-  after-call8)))

@@ -357,7 +357,7 @@
                symbol))))
 
 (define (empty-arglist) '())
-(define (adjoin-arg arg arglist) (append arglist (list arg)))
+(define (adjoin-arg arg arglist) (append (list arg) arglist))
 (define (last-operand? ops) (null? (cdr ops)))
 (define (no-more-exps? seq) (null? seq))
 (define (prompt-for-input string)
@@ -567,7 +567,8 @@
 (define apply-in-underlying-scheme apply)
 
 (define (apply-primitive-procedure proc args)
-  (apply-in-underlying-scheme
+  
+(apply-in-underlying-scheme
    (primitive-implementation proc) args))
 
 (define primitive-procedures
@@ -642,6 +643,11 @@
 
 (define eceval-operations
   (list (list 'adjoin-arg adjoin-arg) ;
+        (list 'car car)
+        (list 'cdr cdr)
+        (list 'cons cons)
+        (list 'set-car! set-car!)
+        (list 'set-cdr! set-cdr!)
         (list 'delay-it delay-it) ;
         (list 'thunk? thunk?)
         (list 'thunk-exp thunk-exp)
@@ -717,6 +723,8 @@
         (assign exp (op read))
         (assign env (op get-global-environment))
         (assign continue (label print-result))
+        (save continue)
+        (assign continue (label force-it))
         (goto (label eval-dispatch))
      print-result
         (perform (op print-stack-statistics))
@@ -791,11 +799,13 @@
      ev-sequence-last-exp
         (restore continue)
         (goto (label eval-dispatch))
-     ev-if
+     ev-if ;;; TODO: implement lazy evaluation version of if
         (save exp) ; save expression for later
         (save env)
         (save continue)
         (assign continue (label ev-if-decide))
+        (save continue)
+        (assign continue (label force-it))
         (assign exp (op if-predicate) (reg exp))
         (goto (label eval-dispatch)) ; evaluate the predicate
      ev-if-decide
@@ -886,64 +896,84 @@
         (restore unev) ; the operands
         (restore env)
         (assign proc (reg val)) ; the operator
-     apply-dispatch ;;;TODO
+     apply-dispatch 
         (test (op primitive-procedure?) (reg proc))
         (branch (label list-of-arg-values))
         (test (op compound-procedure?) (reg proc))
-        (branch (label list-of-delayed-values))
+        (branch (label list-of-delayed-args))
         (goto (label unknown-procedure-type))
+     list-of-delayed-args
+        (assign continue (label compound-apply))
+     list-of-delayed-args-loop 
+        (test (op no-operands?) (reg unev))
+        (branch (label no-ops))
+        (save continue)
+        (assign continue (label delay-operand))
+        (save unev)
+        (assign unev (op rest-operands) (reg unev))
+        (goto (label list-of-delayed-args-loop))
+     delay-operand
+        (restore unev)
+        (assign exp (op first-operand) (reg unev))
+        (assign exp (op delay-it) (reg exp) (reg env))
+        (assign argl (op adjoin-arg) (reg exp) (reg argl))
+        (restore continue)
+        (goto (reg continue))
      list-of-arg-values  ; proc has operator, unev has unevaluated operands
                          ; on first pass exp contains unevaluated operator
                          ; register machine language implementation of list-of-arg-values
         (assign continue (label primitive-apply))
-     list-loop
+     list-of-arg-vals-loop
         (test (op no-operands?) (reg unev))
         (branch (label no-ops))
         (save continue)
         (assign continue (label eval-and-force-operand))
         (save unev)
         (assign unev (op rest-operands) (reg unev))
-        (goto (label list-loop))
+        (goto (label list-of-arg-vals-loop))
      eval-and-force-operand
         (restore unev)
         (assign exp (op first-operand) (reg unev))
-        (assign continue (label force-it)) ;;;TODO: implement force-it in machine language
+        (assign continue (label accum-actual-vals))
+        (save continue) 
+        (assign continue (label force-it)) 
         (goto (label eval-dispatch))
      no-ops
         (assign argl (op empty-arglist))
         (goto (reg continue))
-        
-        (save proc)
-     ev-appl-operand-loop
-        (save argl)
-        (assign exp (op first-operand) (reg unev))
-        (test (op last-operand?) (reg unev))
-        (branch (label ev-appl-last-arg))
-        (save env)
-        (save unev)
-        (assign continue (label ev-appl-accumulate-arg))
-        (goto (label eval-dispatch))
-     ev-appl-accumulate-arg
-        (restore unev)
-        (restore env)
-        (restore argl)
-        (assign argl (op adjoin-arg) (reg val) (reg argl))
-        (assign unev (op rest-operands) (reg unev))
-        (goto (label ev-appl-operand-loop))
-     ev-appl-last-arg
-        (assign continue (label ev-appl-accum-last-arg))
-        (goto (label eval-dispatch))
-     ev-appl-accum-last-arg
-        (restore argl)
-        (assign argl (op adjoin-arg) (reg val) (reg argl))
-        (restore proc)
-        (goto (label apply-dispatch))
-     apply-dispatch
-        (test (op primitive-procedure?) (reg proc))
-        (branch (label primitive-apply))
-        (test (op compound-procedure?) (reg proc))
-        (branch (label compound-apply))
-        (goto (label unknown-procedure-type))
+     force-it
+       (test (op thunk?) (reg val))
+       (branch (label unpack-thunk))
+       (test (op evaluated-thunk?) (reg val))
+       (branch (label return-thunk-val))
+       (restore continue)
+       (goto (reg continue))
+     accum-actual-vals
+       (assign argl (op adjoin-arg) (reg val) (reg argl))
+       (restore continue)
+       (goto (reg continue))
+     return-thunk-val
+       (restore continue)
+       (assign val (op thunk-value) (reg val))
+       (goto (reg continue))
+     unpack-thunk ; val holds the thunk
+       (assign exp (op thunk-exp) (reg val))
+       (save env)
+       (assign env (op thunk-env) (reg val))
+       (assign unev (reg val))
+       (save unev)
+       (assign continue (label unpack-thunk2))
+       (goto (label eval-dispatch))
+     unpack-thunk2 ; val holds the actual value. unev holds the thunk. exp is assigned the (cdr thunk)
+       (restore unev)
+       (assign exp (op cdr) (reg unev))
+       (perform (op set-car!) (reg unev) (const evaluated-thunk))
+       (perform (op set-car!) (reg exp) (reg val))
+       (assign unev (op empty-arglist))
+       (perform (op set-cdr!) (reg exp) (reg unev))
+       (restore env)
+       (restore continue)
+       (goto (reg continue))
      primitive-apply
         (assign val (op apply-primitive-procedure)
                 (reg proc)
