@@ -333,17 +333,38 @@ fun multiply (pli : (int * int) list) =
 (* 25. given a factorization list result from factorize, creates a list of all possible products produced from using some or all those prime factors
 no more than the number of times they are available. the recursive process should return the numbers in ascending order, as opposed to sorting them
 afterwards *)
-fun all_pairs (pair: (int * int)) =
-    if (#2 pair) < 0
-    then []
-    else pair :: all_pairs((#1 pair), (#2 pair) - 1);
-fun combine_lists (li1 : (int * int) list, li2 : (int * int) list) =
+	
+fun all_products (pli : (int * int) list) =
     let
-	fun one_combo (anchor : (int * int), li : (int * int) list) =
-	    if null li
+	fun all_pairs_base (pair: (int * int), mark : int) =
+	    if (#2 pair) > mark
 	    then []
-	    else (anchor :: (hd li))
-(*fun all_products (pli0 : (int * int) list) =
-    (* given a pair, returns a list of the pair with the second member ascending to 0 *)
-    let fun all_pairs (pair : (int * int)) =
-	    if (#2 *)
+	    else [pair] :: all_pairs_base(((#1 pair), (#2 pair) + 1), mark);
+	fun combine_pairs (p1 : (int * int), plists : ((int * int) list) list) =
+	    let
+		fun one_combo (anchor : (int * int), mark : int, li : (int * int) list) =
+		    if (#2 anchor) = mark
+		    then [anchor :: li]
+		    else (anchor :: li) :: one_combo (((#1 anchor), (#2 anchor) + 1), mark, li);
+	    in
+		if null plists
+		then []
+		else one_combo (((#1 p1), 0), (#2 p1), (hd plists)) @ combine_pairs(p1, (tl plists))
+	    end
+	fun make_all_combos (pli : (int * int) list) =
+	    if null (tl pli)
+	    then all_pairs_base (((#1 (hd pli)), 0), (#2 (hd pli)))
+	    else combine_pairs ((hd pli), make_all_combos (tl pli))
+	val all_combos = make_all_combos pli
+	fun multiply_combos (combo_list : (int* int) list list) =
+	    if null (tl combo_list)
+	    then [multiply (hd combo_list)]
+	    else multiply (hd combo_list) :: multiply_combos (tl combo_list)
+    in
+	multiply_combos all_combos
+    end
+			    
+
+
+
+
