@@ -8,54 +8,54 @@ class Examples {
   Leaf<Book> authorLeaf = new Leaf<Book>(new BooksByAuthor());
   Leaf<Book> priceLeaf = new Leaf<Book>(new BooksByPrice());
   
-  ABST<Book> byTitle = new Node<Book>(new BooksByTitle(), hp, 
+  ABST<Book> byTitle = new Vertex<Book>(new BooksByTitle(), hp, 
       titleLeaf,
-      new Node<Book>(new BooksByTitle(), htdp, titleLeaf,
-          new Node<Book>(new BooksByTitle(), gatsby, titleLeaf, titleLeaf)));
+      new Vertex<Book>(new BooksByTitle(), htdp, titleLeaf,
+          new Vertex<Book>(new BooksByTitle(), gatsby, titleLeaf, titleLeaf)));
   
   IList<Book> byTitleList = new ConsList<Book>(hp, 
       new ConsList<Book>(htdp, 
           new ConsList<Book>(gatsby, 
               new MtList<Book>())));
   
-  ABST<Book> byAuthor = new Node<Book>(new BooksByAuthor(), hp,
-      new Node<Book>(new BooksByAuthor(), gatsby, authorLeaf, authorLeaf),
-      new Node<Book>(new BooksByAuthor(), htdp, authorLeaf, authorLeaf));
+  ABST<Book> byAuthor = new Vertex<Book>(new BooksByAuthor(), hp,
+      new Vertex<Book>(new BooksByAuthor(), gatsby, authorLeaf, authorLeaf),
+      new Vertex<Book>(new BooksByAuthor(), htdp, authorLeaf, authorLeaf));
   
   IList<Book> byAuthorList = new ConsList<Book>(gatsby, 
       new ConsList<Book>(hp, 
           new ConsList<Book>(htdp, 
               new MtList<Book>())));
   
-  ABST<Book> byPrice = new Node<Book>(new BooksByPrice(), gatsby, 
-      new Node<Book>(new BooksByPrice(), htdp, priceLeaf, priceLeaf),
-      new Node<Book>(new BooksByPrice(), hp, priceLeaf, priceLeaf));
+  ABST<Book> byPrice = new Vertex<Book>(new BooksByPrice(), gatsby, 
+      new Vertex<Book>(new BooksByPrice(), htdp, priceLeaf, priceLeaf),
+      new Vertex<Book>(new BooksByPrice(), hp, priceLeaf, priceLeaf));
   
   IList<Book> byPriceList = new ConsList<Book>(htdp,
       new ConsList<Book>(gatsby,
           new ConsList<Book>(hp,
               new MtList<Book>())));
   
-  ABST<Book> badByTitle = new Node<Book>(new BooksByTitle(), htdp,
-      new Node<Book>(new BooksByTitle(), hp, titleLeaf,
-          new Node<Book>(new BooksByTitle(), gatsby, titleLeaf, titleLeaf)), titleLeaf);
+  ABST<Book> badByTitle = new Vertex<Book>(new BooksByTitle(), htdp,
+      new Vertex<Book>(new BooksByTitle(), hp, titleLeaf,
+          new Vertex<Book>(new BooksByTitle(), gatsby, titleLeaf, titleLeaf)), titleLeaf);
   
-  ABST<Book> badByAuthor = new Node<Book>(new BooksByAuthor(), hp,
-      new Node<Book>(new BooksByAuthor(), gatsby, authorLeaf, 
-          new Node<Book>(new BooksByAuthor(), htdp, authorLeaf, authorLeaf)), authorLeaf);
+  ABST<Book> badByAuthor = new Vertex<Book>(new BooksByAuthor(), hp,
+      new Vertex<Book>(new BooksByAuthor(), gatsby, authorLeaf, 
+          new Vertex<Book>(new BooksByAuthor(), htdp, authorLeaf, authorLeaf)), authorLeaf);
   
   Book wp = new Book("War and Peace", "LT", 18);
   
-  ABST<Book> byTitleV2 = new Node<Book>(new BooksByTitle(), hp, 
+  ABST<Book> byTitleV2 = new Vertex<Book>(new BooksByTitle(), hp, 
       titleLeaf,
-      new Node<Book>(new BooksByTitle(), htdp, titleLeaf,
-          new Node<Book>(new BooksByTitle(), gatsby, titleLeaf, 
-              new Node<Book>(new BooksByTitle(), wp, titleLeaf, titleLeaf))));
+      new Vertex<Book>(new BooksByTitle(), htdp, titleLeaf,
+          new Vertex<Book>(new BooksByTitle(), gatsby, titleLeaf, 
+              new Vertex<Book>(new BooksByTitle(), wp, titleLeaf, titleLeaf))));
   
-  ABST<Book> byPriceV2 = new Node<Book>(new BooksByPrice(), gatsby, 
-      new Node<Book>(new BooksByPrice(), htdp, priceLeaf, priceLeaf),
-      new Node<Book>(new BooksByPrice(), hp, 
-          new Node<Book>(new BooksByPrice(), wp, priceLeaf, priceLeaf), priceLeaf));
+  ABST<Book> byPriceV2 = new Vertex<Book>(new BooksByPrice(), gatsby, 
+      new Vertex<Book>(new BooksByPrice(), htdp, priceLeaf, priceLeaf),
+      new Vertex<Book>(new BooksByPrice(), hp, 
+          new Vertex<Book>(new BooksByPrice(), wp, priceLeaf, priceLeaf), priceLeaf));
   
   IList<Book> byPriceV2List = new ConsList<Book>(htdp, 
       new ConsList<Book>(gatsby, 
@@ -64,19 +64,19 @@ class Examples {
                   new MtList<Book>()))));
   
   boolean testInsert(Tester t) {
-    return t.checkExpect(byTitle.insert(wp), new Node<Book>(new BooksByTitle(), hp, 
+    return t.checkExpect(byTitle.insert(wp), new Vertex<Book>(new BooksByTitle(), hp, 
         titleLeaf,
-        new Node<Book>(new BooksByTitle(), htdp, titleLeaf,
-            new Node<Book>(new BooksByTitle(), gatsby, titleLeaf, 
-                new Node<Book>(new BooksByTitle(), wp, titleLeaf, titleLeaf))))) &&
-        t.checkExpect(byAuthor.insert(wp), new Node<Book>(new BooksByAuthor(), hp,
-            new Node<Book>(new BooksByAuthor(), gatsby, authorLeaf, authorLeaf),
-            new Node<Book>(new BooksByAuthor(), htdp, 
-                new Node<Book>(new BooksByAuthor(), wp, authorLeaf, authorLeaf), authorLeaf))) &&
-        t.checkExpect(byPrice.insert(wp), new Node<Book>(new BooksByPrice(), gatsby, 
-            new Node<Book>(new BooksByPrice(), htdp, priceLeaf, priceLeaf),
-            new Node<Book>(new BooksByPrice(), hp, 
-                new Node<Book>(new BooksByPrice(), wp, priceLeaf, priceLeaf), priceLeaf)));
+        new Vertex<Book>(new BooksByTitle(), htdp, titleLeaf,
+            new Vertex<Book>(new BooksByTitle(), gatsby, titleLeaf, 
+                new Vertex<Book>(new BooksByTitle(), wp, titleLeaf, titleLeaf))))) &&
+        t.checkExpect(byAuthor.insert(wp), new Vertex<Book>(new BooksByAuthor(), hp,
+            new Vertex<Book>(new BooksByAuthor(), gatsby, authorLeaf, authorLeaf),
+            new Vertex<Book>(new BooksByAuthor(), htdp, 
+                new Vertex<Book>(new BooksByAuthor(), wp, authorLeaf, authorLeaf), authorLeaf))) &&
+        t.checkExpect(byPrice.insert(wp), new Vertex<Book>(new BooksByPrice(), gatsby, 
+            new Vertex<Book>(new BooksByPrice(), htdp, priceLeaf, priceLeaf),
+            new Vertex<Book>(new BooksByPrice(), hp, 
+                new Vertex<Book>(new BooksByPrice(), wp, priceLeaf, priceLeaf), priceLeaf)));
   }
   
   boolean testPresent(Tester t) {
@@ -94,11 +94,11 @@ class Examples {
   boolean testGetRight(Tester t) {
     return
         t.checkExpect(byTitle.getRight(), 
-            new Node<Book>(new BooksByTitle(), htdp, titleLeaf,
-                new Node<Book>(new BooksByTitle(), gatsby, titleLeaf, titleLeaf))) &&
+            new Vertex<Book>(new BooksByTitle(), htdp, titleLeaf,
+                new Vertex<Book>(new BooksByTitle(), gatsby, titleLeaf, titleLeaf))) &&
         t.checkExpect(byAuthor.getRight(), 
-            new Node<Book>(new BooksByAuthor(), hp, authorLeaf, 
-                new Node<Book>(new BooksByAuthor(), htdp, authorLeaf, authorLeaf)));
+            new Vertex<Book>(new BooksByAuthor(), hp, authorLeaf, 
+                new Vertex<Book>(new BooksByAuthor(), htdp, authorLeaf, authorLeaf)));
   }
   
   boolean testSameTree(Tester t) {
@@ -153,17 +153,17 @@ abstract class ABST<T> {
   
   public abstract T getLeftMost();
   
-  public abstract T getLeftMostHelper(Node<T> parentNode);
+  public abstract T getLeftMostHelper(Vertex<T> parentVertex);
   
   public abstract ABST<T> getRight();
   
-  public abstract ABST<T> getRightHelper(Node<T> parentNode);
+  public abstract ABST<T> getRightHelper(Vertex<T> parentVertex);
   
   public abstract boolean sameTree(ABST<T> other);
   
   public boolean sameLeaf(ABST<T> other) { return false; }
   
-  public boolean sameNode(ABST<T> other) { return false; }
+  public boolean sameVertex(ABST<T> other) { return false; }
   
   public boolean sameData(T other) { return false; }
   
@@ -185,7 +185,7 @@ class Leaf<T> extends ABST<T> {
   }
   
   public ABST<T> insert(T item) {
-    return new Node<T>(order, item, this, this);
+    return new Vertex<T>(order, item, this, this);
   }
   
   public boolean present(T item) {
@@ -196,16 +196,16 @@ class Leaf<T> extends ABST<T> {
     throw new RuntimeException("No leftmost item of an empty tree");
   }
   
-  public T getLeftMostHelper(Node<T> parentNode) {
-    return parentNode.data;
+  public T getLeftMostHelper(Vertex<T> parentVertex) {
+    return parentVertex.data;
   }
   
   public ABST<T> getRight() {
     throw new RuntimeException("No right of an empty tree");
   }
   
-  public ABST<T> getRightHelper(Node<T> parentNode) {
-    return parentNode.right;
+  public ABST<T> getRightHelper(Vertex<T> parentVertex) {
+    return parentVertex.right;
   }
   
   public boolean sameTree(ABST<T> other) {
@@ -230,11 +230,11 @@ class Leaf<T> extends ABST<T> {
   
 }
 
-class Node<T> extends ABST<T> {
+class Vertex<T> extends ABST<T> {
   T data;
   ABST<T> left;
   ABST<T> right;
-  Node(Comparator<T> order, T data, ABST<T> left, ABST<T> right) {
+  Vertex(Comparator<T> order, T data, ABST<T> left, ABST<T> right) {
     super(order);
     this.data = data;
     this.left = left;
@@ -243,10 +243,10 @@ class Node<T> extends ABST<T> {
   
   public ABST<T> insert(T item) {
     if (order.compare(data, item) > 0) {
-      return new Node<T>(order, data, left.insert(item), right);
+      return new Vertex<T>(order, data, left.insert(item), right);
     }
     else
-      return new Node<T>(order, data, left, right.insert(item));
+      return new Vertex<T>(order, data, left, right.insert(item));
   }
   
   public boolean present(T item) {
@@ -257,7 +257,7 @@ class Node<T> extends ABST<T> {
     return left.getLeftMostHelper(this);
   }
   
-  public T getLeftMostHelper(Node<T> parentNode) {
+  public T getLeftMostHelper(Vertex<T> parentVertex) {
     return left.getLeftMostHelper(this);
   }
   
@@ -265,15 +265,15 @@ class Node<T> extends ABST<T> {
     return left.getRightHelper(this);
   }
   
-  public ABST<T> getRightHelper(Node<T> parentNode) {
-    return new Node<T>(parentNode.order, parentNode.data, this.getRight(), parentNode.right);
+  public ABST<T> getRightHelper(Vertex<T> parentVertex) {
+    return new Vertex<T>(parentVertex.order, parentVertex.data, this.getRight(), parentVertex.right);
   }
   
   public boolean sameTree(ABST<T> other) {
-    return other.sameNode(this);
+    return other.sameVertex(this);
   }
   
-  public boolean sameNode(ABST<T> other) {
+  public boolean sameVertex(ABST<T> other) {
     return other.sameData(this.data) && other.sameLeft(this.left) && other.sameRight(this.right); 
   }
   

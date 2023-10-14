@@ -19,3 +19,5 @@ Started Coursera's Programming Languages 09JUL2023.
 Completed Programming Languages 21AUG2023. 44 days to complete.
 
 Started Intro to Class Based Program Design (NEU's CS2510) 20AUG2023.
+
+Completed ICBPD 14OCT2023. 56 days to complete.

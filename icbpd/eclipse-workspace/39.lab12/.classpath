@@ -6,7 +6,8 @@
 		</attributes>
 	</classpathentry>
 	<classpathentry kind="src" path="src"/>
-	<classpathentry kind="lib" path="/home/acerlaptop/first-repo/icbpd/EclipseJars/tester.jar"/>
-	<classpathentry kind="lib" path="/home/acerlaptop/first-repo/icbpd/EclipseJars/javalib.jar"/>
+	<classpathentry kind="lib" path="/home/admin/documents/0_first-repo/icbpd/EclipseJars/javalib.jar"/>
+	<classpathentry kind="lib" path="/home/admin/documents/0_first-repo/icbpd/EclipseJars/tester.jar" sourcepath="/home/acerlaptop/first-repo/icbpd/EclipseJars"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.junit.JUNIT_CONTAINER/4"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
